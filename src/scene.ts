@@ -1,9 +1,11 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { config } from './config';
-import { islands, pad, palette, prims, rings, seeded, updrafts, type Prim } from './world';
+import { islands, pad, palette, placements, prims, rings, seeded, updrafts, type Prim } from './world';
 
-// Everything you can see. Builds meshes from the level's primitives and owns the renderer.
+// Everything you can see. Builds meshes from the level's primitives and models, and owns the
+// renderer.
 // The look is a storybook illustration: flat bands of light and shade, an ink line around
 // every solid thing, heaped white clouds, and painted countryside far below.
 
@@ -158,6 +160,69 @@ function build(list: Prim[]) {
   add(water, waterMaterial, false);
   add(ink, inkMaterial, false);
   return group;
+}
+
+// --- Imported models -----------------------------------------------------------------------------
+
+const loader = new GLTFLoader();
+const toon = (map: THREE.Texture | null) => new THREE.MeshToonMaterial({ map, gradientMap: ramp });
+
+/** Every building and prop in the level, loaded and merged into one painted mesh and one ink mesh. */
+async function buildModels() {
+  let atlas: THREE.Texture | null = null;
+  const templates = new Map<string, { paint: THREE.BufferGeometry; ink: THREE.BufferGeometry }>();
+  await Promise.all(
+    [...new Set(placements.map((p) => p.name))].map(async (name) => {
+      const gltf = await loader.loadAsync(`models/${name}.gltf`);
+      gltf.scene.updateMatrixWorld(true);
+      const parts: THREE.BufferGeometry[] = [];
+      gltf.scene.traverse((child) => {
+        if (!(child instanceof THREE.Mesh)) return;
+        // Every model in the pack is painted from the same small sheet of colours.
+        atlas ??= child.material.map;
+        parts.push(child.geometry.clone().applyMatrix4(child.matrixWorld).toNonIndexed());
+      });
+      const paint = mergeGeometries(parts);
+      // The outline swells along normals shared between faces, so it does not split at corners.
+      const ink = new THREE.BufferGeometry().setAttribute('position', paint.attributes.position);
+      const welded = mergeVertices(ink);
+      welded.computeVertexNormals();
+      templates.set(name, { paint, ink: welded.toNonIndexed() });
+    }),
+  );
+
+  const paint: THREE.BufferGeometry[] = [];
+  const ink: THREE.BufferGeometry[] = [];
+  const turn = new THREE.Quaternion();
+  const place = new THREE.Matrix4();
+  for (const { name, pos, rotY, scale } of placements) {
+    place.compose(new THREE.Vector3(...pos), turn.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, rotY), new THREE.Vector3(scale, scale, scale));
+    const template = templates.get(name)!;
+    paint.push(template.paint.clone().applyMatrix4(place));
+    ink.push(template.ink.clone().applyMatrix4(place));
+  }
+  const painted = new THREE.Mesh(mergeGeometries(paint), toon(atlas));
+  painted.castShadow = painted.receiveShadow = true;
+  return new THREE.Group().add(painted, new THREE.Mesh(mergeGeometries(ink), inkMaterial));
+}
+
+/** The courier, sitting. Returns the model and a function that moves it to a moment in time. */
+async function buildCourier() {
+  const gltf = await loader.loadAsync('models/courier.glb');
+  gltf.scene.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    child.material = toon(child.material.map);
+    child.castShadow = true;
+    // The bones move the body outside the box three.js would cull it by.
+    child.frustumCulled = false;
+  });
+  // The model faces +Z and the glider flies down -Z.
+  gltf.scene.rotation.y = Math.PI;
+  gltf.scene.scale.setScalar(0.8);
+  gltf.scene.position.set(0, -0.72, 0.3);
+  const mixer = new THREE.AnimationMixer(gltf.scene);
+  mixer.clipAction(gltf.animations[0]).play();
+  return { model: gltf.scene, animate: (time: number) => mixer.setTime(time) };
 }
 
 // --- Sky, clouds and the land below ------------------------------------------------------------
@@ -374,36 +439,46 @@ function buildClouds() {
 // --- Things that move or glow --------------------------------------------------------------------
 
 function buildGlider() {
-  // The nose points down -Z. A cream centre panel between two coral ones, tips raised.
-  const nose = [0, 0, -1.8];
-  const tail = [0, 0.05, 0.45];
-  const tip = (side: number) => [side * 2.7, 0.32, 1.15];
-  const seam = (side: number) => [side * 1.05, 0.1, 0.8];
+  // A paper dart with a seat. The nose points down -Z; a cream centre panel between two coral
+  // ones, tips raised. The courier is added once loaded.
+  const nose = [0, 0, -2.3];
+  const tail = [0, 0.05, 0.9];
+  const tip = (side: number) => [side * 2.7, 0.32, 1.5];
+  const seam = (side: number) => [side * 1.05, 0.1, 1.2];
   const coral = [0.96, 0.33, 0.24];
   const cream = [1, 0.9, 0.72];
+
   const wing = new THREE.BufferGeometry();
   wing.setAttribute(
     'position',
-    new THREE.Float32BufferAttribute([-1, 1].flatMap((side) => [...nose, ...tip(side), ...seam(side), ...nose, ...seam(side), ...tail]), 3),
+    new THREE.Float32BufferAttribute(
+      [-1, 1].flatMap((side) => [...nose, ...tip(side), ...seam(side), ...nose, ...seam(side), ...tail]),
+      3,
+    ),
   );
   wing.setAttribute('color', new THREE.Float32BufferAttribute([0, 1].flatMap(() => [...coral, ...coral, ...coral, ...cream, ...cream, ...cream]), 3));
   wing.computeVertexNormals();
   const sail = new THREE.Mesh(wing, new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: ramp, side: THREE.DoubleSide }));
   sail.add(new THREE.LineSegments(new THREE.EdgesGeometry(wing, 1), new THREE.LineBasicMaterial({ color: INK })));
+  sail.position.y = -0.55;
 
-  // The frame, pilot and parcel are primitives like the level, so they get the same paint and ink.
-  const part = (w: number, h: number, d: number, x: number, y: number, z: number, color: string): Prim => ({ kind: 'box', pos: [x, y, z], size: [w, h, d], color });
+  // The frame, seat and parcel are primitives like the level, so they get the same paint and ink.
+  const part = (w: number, h: number, d: number, x: number, y: number, z: number, color: string): Prim => ({
+    kind: 'box',
+    pos: [x, y, z],
+    size: [w, h, d],
+    color,
+  });
   const glider = build([
-    part(0.14, 0.14, 2.4, 0, -0.06, -0.5, '#b98a62'), // keel
-    part(4.2, 0.1, 0.1, 0, 0.12, 0.55, '#b98a62'), // cross bar
-    part(0.4, 0.42, 1.0, 0, -0.55, 0.25, '#4f6291'), // pilot
-    { kind: 'sphere', pos: [0, -0.45, -0.45], radius: 0.2, color: '#f6d2b0' }, // head
-    part(0.38, 0.14, 0.38, 0, -0.26, -0.45, '#7a5a48'), // cap
-    part(0.12, 0.06, 1.2, 0.12, -0.34, 0.5, '#e5445a'), // scarf
-    part(0.6, 0.45, 0.6, 0, -1.0, 0.2, '#c08a55'), // parcel
-    part(0.64, 0.1, 0.14, 0, -1.0, 0.2, '#f4ead8'), // parcel string
+    part(0.3, 0.16, 3.2, 0, -0.66, -0.5, '#b98a62'), // keel
+    part(0.6, 0.3, 0.7, 0, -0.42, 0.32, '#4f6291'), // seat
+    part(0.7, 0.5, 0.6, 0, -0.3, 1.2, '#c08a55'), // parcel, strapped on behind
+    part(0.74, 0.1, 0.14, 0, -0.3, 1.2, '#f4ead8'), // parcel string
+    part(0.14, 0.54, 0.64, 0, -0.3, 1.2, '#f4ead8'),
   ]);
   glider.add(sail);
+  // Drawn larger than it collides, so the courier reads from the chase camera.
+  glider.scale.setScalar(1.3);
   glider.traverse((child) => (child.castShadow = child instanceof THREE.Mesh && child.material !== inkMaterial));
   return glider;
 }
@@ -520,7 +595,8 @@ export function createScene(canvas: HTMLCanvasElement) {
   const glider = buildGlider();
   const ringMeshes = buildRings();
   const updraftMotes = buildUpdrafts();
-  scene.add(sky, buildLand(), buildClouds(), buildBeacon(), glider, updraftMotes.points, ...ringMeshes, build(prims));
+  let animateCourier = (_time: number) => {};
+  scene.add(sky, buildLand(), buildClouds(), buildBeacon(), glider, updraftMotes.points, ...ringMeshes, build(prims.filter((p) => !p.hidden)));
 
   const resize = () => {
     renderer.setSize(innerWidth, innerHeight, false);
@@ -533,6 +609,14 @@ export function createScene(canvas: HTMLCanvasElement) {
   return {
     camera,
     glider,
+    /** Settles once the models are in the scene. */
+    loaded: Promise.all([
+      buildModels().then((town) => scene.add(town)),
+      buildCourier().then((courier) => {
+        glider.add(courier.model);
+        animateCourier = courier.animate;
+      }),
+    ]),
     /** Dims a ring once it has been flown through. */
     setRingHit(index: number, hit: boolean) {
       const ring = ringMeshes[index];
@@ -541,6 +625,7 @@ export function createScene(canvas: HTMLCanvasElement) {
     },
     render(time: number) {
       updraftMotes.animate(time);
+      animateCourier(time);
       sky.position.copy(camera.position);
       renderer.render(scene, camera);
     },
