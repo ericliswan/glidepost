@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { config } from './config';
 import type { FlightInput } from './flight';
 import { createGame, launch, step, type Game, type GameEvent } from './game';
-import { cliffFace, distanceToWorld, liftAt, pad, rings, spawn, updrafts } from './world';
+import { cliffFace, distanceToWorld, liftAt, pad, placements, rings, spawn, updrafts } from './world';
 
 const DT = 1 / 120;
 const HANDS_OFF: FlightInput = { pitch: 0, turn: 0, boost: false, brake: false };
@@ -58,6 +58,27 @@ describe('level', () => {
     }
   });
 
+  it('keeps the whole ring line clear, through the street, the tunnel and the market', () => {
+    // From the first ring on: the glider starts on the deck, which is nearer than that.
+    const line = [...rings.map((ring) => ring.pos), [pad.x, pad.y + 12, pad.z]];
+    for (let i = 1; i < line.length; i++) {
+      for (let t = 0; t <= 1; t += 0.02) {
+        const [x, y, z] = line[i].map((to, axis) => line[i - 1][axis] + (to - line[i - 1][axis]) * t);
+        expect(distanceToWorld(x, y, z), `leg ${i} at ${t.toFixed(2)}`).toBeGreaterThan(7);
+      }
+    }
+  });
+
+  it('gives a model the shape of its outline, not of a box round it', () => {
+    const home = placements.find((p) => p.name.startsWith('building_home_A'))!;
+    const [x, ground, z] = home.pos;
+    expect(distanceToWorld(x, ground + 5, z)).toBeLessThan(0);
+    // Level with the ridge of the roof and 4 m to one side of it: inside a box, clear of a roof.
+    const sideX = x + Math.cos(home.rotY) * 4;
+    const sideZ = z - Math.sin(home.rotY) * 4;
+    expect(distanceToWorld(sideX, ground + 12, sideZ)).toBeGreaterThan(1);
+  });
+
   it('has lift inside updrafts and none outside', () => {
     const u = updrafts[0];
     expect(liftAt(u.x, u.base + 40, u.z)).toBe(u.strength);
@@ -106,8 +127,9 @@ describe('rules', () => {
   });
 
   it('charges boost while skimming the cliff and not in open air', () => {
-    const skimming = flyingAt({ x: cliffFace - 3, y: 100, z: -330, pitch: -0.1, speed: 35 });
-    const open = flyingAt({ x: cliffFace - 40, y: 100, z: -330, pitch: -0.1, speed: 35 });
+    // Along the bare face above the terrace market, and far above everything.
+    const skimming = flyingAt({ x: cliffFace - 3, y: 130, z: -372, pitch: -0.1, speed: 35 });
+    const open = flyingAt({ x: cliffFace - 3, y: 400, z: -372, pitch: -0.1, speed: 35 });
     for (let t = 0; t < 1; t += DT) {
       step(skimming, HANDS_OFF, DT);
       step(open, HANDS_OFF, DT);
@@ -120,9 +142,11 @@ describe('rules', () => {
 
 describe('routes', () => {
   it('cannot reach the lighthouse by gliding straight there', () => {
-    const game = createGame();
-    launch(game);
-    while (game.phase === 'flying' && !overPad(game)) step(game, steer(game, pad.x, pad.z, BEST_GLIDE), DT);
+    // The same glide in empty sky far to one side, so the answer does not depend on the scenery.
+    const away = 5000;
+    const game = flyingAt({ x: spawn.x + away });
+    const short = () => Math.hypot(game.glider.x - away - pad.x, game.glider.z - pad.z) > pad.radius;
+    while (game.phase === 'flying' && short()) step(game, steer(game, pad.x + away, pad.z, BEST_GLIDE), DT);
     // Either it arrives under the island or it is already below the clouds.
     expect(game.glider.y).toBeLessThan(pad.y);
   });
