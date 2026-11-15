@@ -35,6 +35,16 @@
       </div>
     </div>
 
+    <div id="dialogue" hidden>
+      <img id="portrait" alt="" />
+      <div class="speech" aria-hidden="true">
+        <div id="speaker"></div>
+        <p><span id="written"></span><span id="unwritten"></span></p>
+        <div class="hint">Space or click ▸</div>
+      </div>
+      <div id="spoken" role="status" aria-live="polite"></div>
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

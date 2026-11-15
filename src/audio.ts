@@ -50,6 +50,11 @@ export function createAudio() {
       windTone.frequency.setTargetAtTime(220 + 2600 * s + (boosting ? 700 : 0), ctx.currentTime, 0.1);
     },
 
+    /** One blip of a character talking, at the pitch of their voice. */
+    talk(pitch: number) {
+      tone(pitch, pitch * 1.2, 0.05, 'triangle', 0.07);
+    },
+
     /** Each link in a chain rings a semitone higher. */
     ring(chain: number) {
       const pitch = 520 * 2 ** ((chain - 1) / 12);

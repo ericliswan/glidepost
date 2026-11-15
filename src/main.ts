@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { createAudio } from './audio';
 import { config } from './config';
+import { createDialogue } from './dialogue';
 import { createGame, launch, reset, step, type GameEvent } from './game';
 import { createHud } from './hud';
 import { createInput } from './input';
 import { createScene } from './scene';
+import { briefing, thanks } from './story';
 
 // Wires the rules to the screen, speakers and controls, and runs the frame loop.
 
@@ -21,6 +23,8 @@ const scene = createScene(canvas);
 const input = createInput(canvas);
 const audio = createAudio();
 const hud = createHud();
+const dialogue = createDialogue(audio.talk);
+let briefed = false;
 let best = Number(localStorage.getItem(BEST_KEY)) || null;
 
 // Browsers only allow sound once the player has pressed something.
@@ -61,7 +65,10 @@ function updateCamera(dt: number) {
 function onDeck() {
   input.centre();
   snapCamera = true;
-  hud.message(READY);
+  // The postmaster explains the job once. After that, a retry is instant.
+  hud.message(briefed ? READY : '');
+  if (!briefed) dialogue.play(briefing, () => hud.message(READY));
+  briefed = true;
 }
 
 function handle(event: GameEvent) {
@@ -75,7 +82,9 @@ function handle(event: GameEvent) {
     }
     audio.land(event.perfect);
     const notes = [`${game.time.toFixed(2)} s`, event.perfect && 'Perfect landing', newBest && 'New best!'];
-    hud.message(`<strong>Delivered!</strong>${notes.filter(Boolean).join(' · ')}\nPress R to fly again`);
+    const result = `<strong>Delivered!</strong>${notes.filter(Boolean).join(' · ')}\nPress R to fly again`;
+    hud.message('');
+    dialogue.play(thanks(game.time, event.perfect), () => hud.message(result));
   } else if (event.type === 'crashed') {
     audio.crash();
     hud.message(
@@ -97,10 +106,15 @@ function frame(now: number) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
 
+  // While someone is talking, Space and click turn the page and R cuts them short.
   const wantsLaunch = input.takeLaunch();
-  if (input.takeRestart() || (wantsLaunch && game.phase === 'landed')) {
+  const talking = dialogue.active;
+  if (input.takeRestart() || (wantsLaunch && !talking && game.phase === 'landed')) {
+    dialogue.close();
     reset(game);
     onDeck();
+  } else if (talking) {
+    if (wantsLaunch) dialogue.advance();
   } else if (wantsLaunch && game.phase === 'ready') {
     input.centre();
     launch(game);
@@ -118,6 +132,7 @@ function frame(now: number) {
     hud.message(g.speed < config.flight.stallSpeed * 1.15 ? 'Stalling! Dive to pick up speed' : '');
   }
   hud.update(game, best);
+  dialogue.update(dt);
 
   scene.glider.position.set(g.x, g.y, g.z);
   scene.glider.rotation.set(g.pitch, g.yaw, g.roll, 'YXZ');
