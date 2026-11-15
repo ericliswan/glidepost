@@ -39,7 +39,7 @@ const BEST_GLIDE = -0.11;
 describe('level', () => {
   it('measures distance to boxes, cones and open air', () => {
     // Above the flat top of the waterfall rock (grass slab top is at y = 156).
-    expect(distanceToWorld(112, 160, -385)).toBeCloseTo(4);
+    expect(distanceToWorld(92, 160, -385)).toBeCloseTo(4);
     // Beside the cliff face.
     expect(distanceToWorld(cliffFace - 5, 100, -385)).toBeCloseTo(5);
     // Inside the rock.

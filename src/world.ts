@@ -35,23 +35,23 @@ export interface Ring {
   normal: Vec3;
 }
 
-const palette = {
-  grass: '#a8d5a2',
-  rock: '#c9b8a8',
-  cliff: '#b9a7b0',
-  stone: '#e9e1d6',
-  wall: '#fbeedd',
-  wallPink: '#f6d5cf',
-  wallBlue: '#d3e3f1',
-  roofRed: '#e58b7b',
-  roofBlue: '#8fb3d9',
-  roofPlum: '#b48ead',
-  trunk: '#a9826a',
-  pine: '#7fbf9a',
-  water: '#a7dcef',
-  pad: '#ffd98a',
+export const palette = {
+  grass: '#8fce7a',
+  rock: '#b99a80',
+  cliff: '#c99a8c',
+  stone: '#ece2d2',
+  wall: '#fff0dc',
+  wallPink: '#f9cfc6',
+  wallBlue: '#cfe2f5',
+  roofRed: '#e86a58',
+  roofBlue: '#5f9bd6',
+  roofPlum: '#a56fb0',
+  trunk: '#8f6a55',
+  pine: '#4fa883',
+  water: '#8fd6f2',
+  pad: '#ffc94f',
   lamp: '#fff2b0',
-  wood: '#d9b48f',
+  wood: '#d6a878',
 };
 
 export const prims: Prim[] = [];
@@ -109,7 +109,8 @@ house(market.x + 4, market.top, market.z + 26, 11, 8, 0.6, palette.wallBlue, pal
 house(market.x - 10, market.top, market.z - 34, 10, 8, -0.5, palette.wall, palette.roofPlum);
 house(market.x + 32, market.top, market.z + 22, 10, 8, 1.0, palette.wallPink, palette.roofBlue);
 house(market.x - 38, market.top, market.z - 14, 10, 9, 0.1, palette.wallBlue, palette.roofRed);
-// Clock tower in the square.
+// Clock tower in the paved square.
+cone(market.x, market.top, market.z - 2, 17, 17, 0.3, palette.stone, 12);
 cone(market.x, market.top, market.z - 4, 3.4, 3, 22, palette.stone, 6);
 cone(market.x, market.top + 22, market.z - 4, 4.4, 0, 8, palette.roofBlue, 6);
 // Market stalls.
@@ -137,9 +138,13 @@ box(rock.x, rock.top + 108, rock.z, 56, 2, 130, palette.grass);
 // Buttresses on the far side, for the silhouette.
 box(rock.x + 30, rock.top, rock.z + 20, 22, 70, 40, palette.rock, 0.3);
 box(rock.x + 26, rock.top, rock.z - 44, 20, 46, 30, palette.rock, -0.4);
+// A peak at the far end breaks up the block.
+box(rock.x + 8, rock.top + 110, rock.z - 30, 34, 26, 60, palette.cliff);
+box(rock.x + 8, rock.top + 136, rock.z - 30, 34, 2, 60, palette.grass);
+tree(rock.x + 8, rock.top + 138, rock.z - 34, 1.4);
 tree(rock.x - 10, rock.top + 110, rock.z + 30, 1.4);
-tree(rock.x + 12, rock.top + 110, rock.z - 10, 1.2);
-tree(rock.x - 6, rock.top + 110, rock.z - 48, 1.5);
+tree(rock.x + 14, rock.top + 110, rock.z + 48, 1.2);
+tree(rock.x - 18, rock.top + 110, rock.z - 48, 1.5);
 tree(rock.x - 50, rock.top, rock.z + 30, 1.2);
 tree(rock.x - 58, rock.top, rock.z - 20);
 // The waterfall pours down the far end of the face into a pool. You can fly through the water.
