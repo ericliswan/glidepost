@@ -1,18 +1,20 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { config } from './config';
-import { pad, palette, prims, rings, updrafts, type Prim } from './world';
+import { islands, pad, palette, prims, rings, seeded, updrafts, type Prim } from './world';
 
 // Everything you can see. Builds meshes from the level's primitives and owns the renderer.
+// The look is a storybook illustration: flat bands of light and shade, an ink line around
+// every solid thing, heaped white clouds, and painted countryside far below.
 
-// Late afternoon: a low warm sun ahead and to the left, with cool lavender shade.
-const SUN_DIRECTION = new THREE.Vector3(-0.75, 0.5, -0.4).normalize();
-const SKY = { zenith: '#3f8fe0', middle: '#a5d3f5', horizon: '#ffd9c4', sun: '#fff1d0' };
+// A summer afternoon: the sun high, ahead and to the left.
+const SUN_DIRECTION = new THREE.Vector3(-0.6, 0.7, -0.4).normalize();
+const SKY = { zenith: '#2a78dc', middle: '#69b4f4', horizon: '#dcefff', sun: '#fffbe6' };
+const INK = '#5b3f4d';
 const LEVEL_CENTRE = new THREE.Vector3(60, 60, -390);
-
-/** Small seeded generator so the clouds are in the same place on every load. */
-function seeded(seed: number) {
-  return () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
-}
+const LAND_LEVEL = -420;
+// The land is tinted towards the sky, as distant things are, so the islands stand out against it.
+const LAND_HAZE = '#cfe2f2';
 
 /** Repeatable 0 to 1 noise from a position, so vertices that share a corner move together. */
 function noise(x: number, y: number, z: number) {
@@ -20,16 +22,35 @@ function noise(x: number, y: number, z: number) {
   return s - Math.floor(s);
 }
 
-// --- Level geometry ----------------------------------------------------------------------------
+// --- Paint and ink -----------------------------------------------------------------------------
 
-const solidMaterial = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-const waterMaterial = new THREE.MeshLambertMaterial({
+// Light falls in three flat bands instead of a smooth gradient: shade, half-light and full sun.
+// Shade starts exactly where a surface turns away from the sun, which is also where the shadow
+// map takes over, so the two never disagree.
+const ramp = new THREE.DataTexture(new Uint8Array([0, 0, 150, 255]), 4, 1, THREE.RedFormat);
+ramp.needsUpdate = true;
+
+const paintMaterial = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: ramp });
+const glowMaterial = new THREE.MeshBasicMaterial({ vertexColors: true });
+const waterMaterial = new THREE.MeshToonMaterial({
   color: palette.water,
   emissive: palette.water,
   emissiveIntensity: 0.35,
+  gradientMap: ramp,
   transparent: true,
   opacity: 0.75,
 });
+
+// The outline is a copy of each shape drawn inside out and slightly swollen, so only a rim of
+// it shows around the silhouette. It swells with distance to stay about as thick on screen.
+const inkMaterial = new THREE.MeshBasicMaterial({ color: INK, side: THREE.BackSide });
+inkMaterial.onBeforeCompile = (shader) => {
+  shader.vertexShader = shader.vertexShader.replace(
+    '#include <begin_vertex>',
+    `float inkDepth = -(modelViewMatrix * vec4(position, 1.0)).z;
+     vec3 transformed = position + normal * clamp(inkDepth, 4.0, 600.0) * 0.004;`,
+  );
+};
 
 /**
  * Chips the sides of a rock inwards so it reads as stone, not as a box. Vertices only ever move
@@ -54,45 +75,92 @@ function roughen(geometry: THREE.BufferGeometry, prim: Prim) {
   }
 }
 
-function meshFor(prim: Prim) {
+/** The painted surface of a primitive and its ink outline, both already in place in the world. */
+function shape(prim: Prim) {
   const rocky = prim.color === palette.rock || prim.color === palette.cliff;
   const segments = (size: number) => (rocky ? Math.ceil(size / 13) : 1);
-  let geometry: THREE.BufferGeometry =
+  let paint: THREE.BufferGeometry =
     prim.kind === 'box'
       ? new THREE.BoxGeometry(...prim.size, ...prim.size.map(segments))
       : prim.kind === 'cone'
         ? new THREE.CylinderGeometry(prim.rTop, prim.rBottom, prim.height, rocky ? prim.sides * 2 : prim.sides, rocky ? 4 : 1)
-        : new THREE.IcosahedronGeometry(prim.radius, 1);
-  if (rocky) roughen(geometry, prim);
-  if (geometry.index) geometry = geometry.toNonIndexed();
+        : new THREE.SphereGeometry(prim.radius, prim.radius < 1 ? 6 : 14, prim.radius < 1 ? 4 : 10);
+  if (rocky) roughen(paint, prim);
+  paint = paint.toNonIndexed();
+  paint.deleteAttribute('uv');
+  // Rock and roofs keep hard facets; trunks, towers and treetops are left round.
+  if (rocky || (prim.kind === 'cone' && prim.sides <= 6)) paint.computeVertexNormals();
 
-  // One colour per triangle. Rock gets mottled faces and darker bands every few metres up;
-  // everything else gets a slight shade of its own so no two trees or walls quite match.
-  const position = geometry.attributes.position;
+  // Rock gets mottled faces and darker bands every few metres up. Everything else gets a
+  // slight shade of its own, so no two trees or walls quite match, and is darker at the foot.
+  const position = paint.attributes.position;
+  const height = prim.kind === 'box' ? prim.size[1] : prim.kind === 'cone' ? prim.height : prim.radius * 2;
   const colors = new Float32Array(position.count * 3);
   const base = new THREE.Color(prim.color);
   const own = 0.95 + 0.1 * noise(...prim.pos);
   for (let i = 0; i < position.count; i += 3) {
-    let shade = own;
-    if (rocky) {
-      const y = prim.pos[1] + (position.getY(i) + position.getY(i + 1) + position.getY(i + 2)) / 3;
-      const speckle = noise(position.getX(i) + position.getX(i + 1), y, position.getZ(i) + position.getZ(i + 2));
-      shade = (0.88 + 0.2 * speckle) * (Math.floor(y / 11 + speckle * 0.6) % 2 ? 0.9 : 1);
+    const y = prim.pos[1] + (position.getY(i) + position.getY(i + 1) + position.getY(i + 2)) / 3;
+    const speckle = noise(position.getX(i) + position.getX(i + 1), y, position.getZ(i) + position.getZ(i + 2));
+    const face = (0.95 + 0.1 * speckle) * (Math.floor(y / 11 + speckle * 0.6) % 2 ? 0.9 : 1);
+    for (let v = i; v < i + 3; v++) {
+      const shade = rocky ? face : own * (0.86 + 0.18 * (position.getY(v) / height + 0.5));
+      colors.set([base.r * shade, base.g * shade, base.b * shade], v * 3);
     }
-    for (let v = 0; v < 3; v++) colors.set([base.r * shade, base.g * shade, base.b * shade], (i + v) * 3);
   }
-  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  paint.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-  const see = prim.solid === false;
-  const mesh = new THREE.Mesh(geometry, see ? waterMaterial : solidMaterial);
-  mesh.position.set(...prim.pos);
-  mesh.rotation.y = prim.rotY ?? 0;
-  mesh.castShadow = !see;
-  mesh.receiveShadow = !see;
-  return mesh;
+  // The outline swells along the "normal", so here that is the way out from the middle of the
+  // shape. Vertices in the same place must agree on it or the outline tears at the corners.
+  const away = new Float32Array(position.count * 3);
+  for (let i = 0; i < position.count; i++) {
+    const x = position.getX(i);
+    const y = position.getY(i);
+    const z = position.getZ(i);
+    if (prim.kind === 'box') {
+      away.set([(2 * x) / prim.size[0], (2 * y) / prim.size[1], (2 * z) / prim.size[2]], i * 3);
+    } else if (prim.kind === 'cone') {
+      const r = Math.hypot(x, z) || 1;
+      away.set([x / r, Math.abs(y) > prim.height / 2 - 0.01 ? Math.sign(y) : 0, z / r], i * 3);
+    } else {
+      away.set([x, y, z], i * 3);
+    }
+  }
+  const ink = new THREE.BufferGeometry();
+  ink.setAttribute('position', position.clone());
+  ink.setAttribute('normal', new THREE.BufferAttribute(away, 3));
+
+  const place = new THREE.Matrix4().makeRotationY(prim.rotY ?? 0).setPosition(...prim.pos);
+  return { paint: paint.applyMatrix4(place), ink: ink.applyMatrix4(place) };
 }
 
-// --- Sky and clouds ----------------------------------------------------------------------------
+/** Merges a list of primitives into a few meshes, one per material. */
+function build(list: Prim[]) {
+  const paint: THREE.BufferGeometry[] = [];
+  const glow: THREE.BufferGeometry[] = [];
+  const water: THREE.BufferGeometry[] = [];
+  const ink: THREE.BufferGeometry[] = [];
+  for (const prim of list) {
+    const made = shape(prim);
+    const lit = prim.color === palette.window || prim.color === palette.lamp;
+    (lit ? glow : prim.solid === false && prim.color === palette.water ? water : paint).push(made.paint);
+    // Only things you can hit are outlined, which also keeps flowers and window frames clean.
+    if (prim.solid !== false) ink.push(made.ink);
+  }
+  const group = new THREE.Group();
+  const add = (parts: THREE.BufferGeometry[], material: THREE.Material, shadows: boolean) => {
+    if (!parts.length) return;
+    const mesh = new THREE.Mesh(mergeGeometries(parts), material);
+    mesh.castShadow = mesh.receiveShadow = shadows;
+    group.add(mesh);
+  };
+  add(paint, paintMaterial, true);
+  add(glow, glowMaterial, false);
+  add(water, waterMaterial, false);
+  add(ink, inkMaterial, false);
+  return group;
+}
+
+// --- Sky, clouds and the land below ------------------------------------------------------------
 
 function buildSky() {
   return new THREE.Mesh(
@@ -123,12 +191,12 @@ function buildSky() {
         void main() {
           vec3 dir = normalize(direction);
           float up = max(dir.y, 0.0);
-          vec3 color = mix(horizon, middle, smoothstep(0.0, 0.22, up));
-          color = mix(color, zenith, smoothstep(0.15, 0.75, up));
-          // A wide warm glow, a tighter halo, then the disc itself.
+          vec3 color = mix(horizon, middle, smoothstep(0.0, 0.2, up));
+          color = mix(color, zenith, smoothstep(0.12, 0.7, up));
+          // A wide soft glow, then the disc itself.
           float towardsSun = max(dot(dir, sunDirection), 0.0);
-          color += sunColor * (0.22 * pow(towardsSun, 5.0) + 0.35 * pow(towardsSun, 80.0));
-          color = mix(color, sunColor, smoothstep(0.9990, 0.9994, towardsSun));
+          color += sunColor * 0.2 * pow(towardsSun, 6.0);
+          color = mix(color, sunColor, smoothstep(0.9985, 0.9990, towardsSun));
           gl_FragColor = vec4(color, 1.0);
           #include <colorspace_fragment>
         }`,
@@ -136,71 +204,176 @@ function buildSky() {
   );
 }
 
-function buildClouds() {
-  const group = new THREE.Group();
-  // Emissive keeps the shaded side of a cloud a soft colour instead of grey: cool for the sea
-  // below, and a warm pink for the undersides of the clouds above.
-  const material = (color: string, emissive: string, emissiveIntensity: number) =>
-    new THREE.MeshLambertMaterial({ color, emissive, emissiveIntensity, flatShading: true });
-
-  const sea = new THREE.Mesh(new THREE.CircleGeometry(3000, 48), material('#f3eef6', '#aab2e2', 0.42));
-  sea.rotation.x = -Math.PI / 2;
-  sea.receiveShadow = true;
-  group.add(sea);
-
-  const seaPuffs = 520;
-  const skyClouds = 26;
-  const puffsPerCloud = 5;
-  const puff = new THREE.IcosahedronGeometry(1, 2);
-  const low = new THREE.InstancedMesh(puff, material('#ffffff', '#aab2e2', 0.42), seaPuffs);
-  const high = new THREE.InstancedMesh(puff, material('#ffffff', '#f0c6c4', 0.55), skyClouds * puffsPerCloud);
-  low.receiveShadow = true;
-  const random = seeded(11);
-  const dummy = new THREE.Object3D();
-  const place = (puffs: THREE.InstancedMesh, index: number, x: number, y: number, z: number, w: number, h: number, d: number) => {
-    dummy.position.set(x, y, z);
-    dummy.scale.set(w, h, d);
-    dummy.rotation.y = random() * Math.PI;
-    dummy.updateMatrix();
-    puffs.setMatrixAt(index, dummy.matrix);
+/** Countryside far below, painted once onto a canvas: meadows, fields, woods, a river, villages. */
+function buildLand() {
+  const size = 2048;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const random = seeded(23);
+  const pick = (colors: string[]) => colors[Math.floor(random() * colors.length)];
+  const blob = (x: number, y: number, r: number, color: string) => {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(x, y, r, r * (0.5 + random() * 0.5), random() * Math.PI, 0, Math.PI * 2);
+    ctx.fill();
+  };
+  /** A wandering line from one edge of the map to the other. */
+  const wander = (width: number, color: string) => {
+    let x = random() * size;
+    let y = 0;
+    let heading = Math.PI / 2 + (random() - 0.5);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineCap = ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    while (y < size) {
+      heading += (random() - 0.5) * 0.5 + (Math.PI / 2 - heading) * 0.08;
+      x += Math.cos(heading) * 30;
+      y += Math.sin(heading) * 30;
+      ctx.lineTo(x, y);
+    }
+    ctx.stroke();
   };
 
-  // The sea: low domes, thickest under the route. Their tops stay at about the height where
-  // the game calls you lost, so what looks like cloud is cloud.
-  for (let i = 0; i < seaPuffs; i++) {
-    const angle = random() * Math.PI * 2;
-    const reach = random() * 1500;
-    const height = 7 + random() * 12;
-    const width = 26 + random() * 50;
-    place(low, i, Math.cos(angle) * reach, config.world.cloudLevel - height * 0.8 + random() * 2, -380 + Math.sin(angle) * reach, width, height, width * (0.6 + random() * 0.5));
+  ctx.fillStyle = '#8fd06c';
+  ctx.fillRect(0, 0, size, size);
+  for (let i = 0; i < 320; i++) blob(random() * size, random() * size, 40 + random() * 110, pick(['#9bd874', '#7fc866', '#b2e07c', '#88cf70', '#a3db6e']));
+
+  // Fields: tilted rectangles of crops, striped along the plough lines.
+  for (let i = 0; i < 110; i++) {
+    const w = 30 + random() * 70;
+    const h = 20 + random() * 50;
+    ctx.save();
+    ctx.translate(random() * size, random() * size);
+    ctx.rotate(random() * Math.PI);
+    ctx.fillStyle = pick(['#eedd8c', '#d9e389', '#c5dc78', '#f3e6a4', '#e6c877']);
+    ctx.fillRect(-w / 2, -h / 2, w, h);
+    ctx.fillStyle = 'rgb(255 255 255 / 22%)';
+    for (let s = -h / 2 + 3; s < h / 2; s += 6) ctx.fillRect(-w / 2, s, w, 2);
+    ctx.restore();
   }
 
-  // Clouds in the sky: a row of puffs each, biggest in the middle, high above or far off to the side.
-  for (let i = 0; i < skyClouds; i++) {
-    const far = i % 2 === 0;
-    const angle = random() * Math.PI * 2;
-    const reach = far ? 1100 + random() * 900 : 300 + random() * 700;
-    const x = Math.cos(angle) * reach;
-    const y = far ? 120 + random() * 320 : 300 + random() * 160;
-    const z = -380 + Math.sin(angle) * reach;
-    const size = (far ? 60 : 34) * (0.7 + random() * 0.8);
-    const turn = random() * Math.PI;
-    for (let p = 0; p < puffsPerCloud; p++) {
-      const along = (p - (puffsPerCloud - 1) / 2) * size * 0.75;
-      const s = size * (1 - Math.abs(p - 2) * 0.24) * (0.85 + random() * 0.3);
-      place(high, i * puffsPerCloud + p, x + Math.cos(turn) * along, y + s * 0.3, z + Math.sin(turn) * along, s, s * 0.6, s * 0.9);
+  wander(16, '#8fd4f2');
+  wander(7, '#8fd4f2');
+  for (let i = 0; i < 5; i++) wander(2.5, '#f6ecd0');
+
+  // Woods: clumps of round treetops.
+  for (let i = 0; i < 90; i++) {
+    const x = random() * size;
+    const y = random() * size;
+    const spread = 20 + random() * 70;
+    for (let t = 0; t < spread; t++) {
+      blob(x + (random() - 0.5) * spread * 2, y + (random() - 0.5) * spread * 1.4, 5 + random() * 8, pick(['#3f9470', '#4ba66c', '#58b46c', '#368a6c']));
     }
   }
-  group.add(low, high);
+
+  // Villages: a scatter of little roofs.
+  for (let i = 0; i < 26; i++) {
+    const x = random() * size;
+    const y = random() * size;
+    for (let h = 0; h < 14; h++) {
+      ctx.save();
+      ctx.translate(x + (random() - 0.5) * 70, y + (random() - 0.5) * 70);
+      ctx.rotate(random() * Math.PI);
+      ctx.fillStyle = '#fff3dc';
+      ctx.fillRect(-4.5, -3.5, 9, 7);
+      ctx.fillStyle = pick([palette.terracotta, palette.terracotta, palette.teal, palette.copper]);
+      ctx.fillRect(-3.5, -2.5, 7, 5);
+      ctx.restore();
+    }
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+  const land = new THREE.Mesh(new THREE.CircleGeometry(3000, 48), new THREE.MeshBasicMaterial({ map: texture, color: LAND_HAZE }));
+  land.rotation.x = -Math.PI / 2;
+  land.position.set(LEVEL_CENTRE.x, LAND_LEVEL, LEVEL_CENTRE.z);
+  return land;
+}
+
+function buildClouds() {
+  const random = seeded(11);
+  const near: THREE.Matrix4[] = [];
+  const far: THREE.Matrix4[] = [];
+  const dummy = new THREE.Object3D();
+  const puff = (list: THREE.Matrix4[], x: number, y: number, z: number, size: number, flat: number) => {
+    dummy.position.set(x, y, z);
+    dummy.scale.set(size, size * flat, size);
+    dummy.updateMatrix();
+    list.push(dummy.matrix.clone());
+  };
+  /** One cloud: a big puff with smaller ones heaped round it, and smaller tiers stacked on top. */
+  const heap = (list: THREE.Matrix4[], x: number, y: number, z: number, size: number, flat: number, tiers = 1) => {
+    for (let t = 0; t < tiers; t++) {
+      puff(list, x, y, z, size, flat);
+      for (let i = 0; i < 6; i++) {
+        const angle = random() * Math.PI * 2;
+        const out = size * (0.6 + random() * 0.5);
+        const s = size * (0.4 + random() * 0.3);
+        puff(list, x + Math.cos(angle) * out, y - (size - s) * flat * (0.5 + random() * 0.5), z + Math.sin(angle) * out, s, flat);
+      }
+      x += (random() - 0.5) * size * 0.6;
+      z += (random() - 0.5) * size * 0.6;
+      y += size * flat * 0.75;
+      size *= 0.68;
+    }
+  };
+
+  // A broken layer of low cloud with the land showing through the gaps. The tops are at the
+  // height where the game calls you lost.
+  for (let i = 0; i < 85; i++) {
+    const angle = random() * Math.PI * 2;
+    const reach = Math.sqrt(random()) * 1700;
+    const size = 40 + random() * 60;
+    heap(near, LEVEL_CENTRE.x + Math.cos(angle) * reach, config.world.cloudLevel - size * 0.2, LEVEL_CENTRE.z + Math.sin(angle) * reach, size, 0.2);
+  }
+
+  // Each island rides on a wreath of cloud. You can fly through it, but there is rock inside.
+  for (const { x, top, z, r } of islands) {
+    for (let i = 0; i < r / 2.5; i++) {
+      const angle = random() * Math.PI * 2;
+      const s = r * (0.14 + random() * 0.12);
+      const drop = s + random() * r * 0.45;
+      // The rock narrows as it goes down, so the wreath closes in with it.
+      const out = Math.max(0, r * 0.95 - drop * 0.7);
+      puff(near, x + Math.cos(angle) * out, top - 4 - drop, z + Math.sin(angle) * out, s, 0.75);
+    }
+  }
+
+  // A few small clouds drifting above the route.
+  for (let i = 0; i < 9; i++) {
+    const angle = random() * Math.PI * 2;
+    const reach = 250 + random() * 600;
+    heap(near, LEVEL_CENTRE.x + Math.cos(angle) * reach, 270 + random() * 160, LEVEL_CENTRE.z + Math.sin(angle) * reach, 22 + random() * 22, 0.6);
+  }
+
+  // Great towers of cumulus standing all round the horizon.
+  for (let i = 0; i < 18; i++) {
+    const angle = (i + random() * 0.7) * ((Math.PI * 2) / 18);
+    const reach = 1400 + random() * 900;
+    const size = 190 + random() * 200;
+    heap(far, LEVEL_CENTRE.x + Math.cos(angle) * reach, -160 + random() * 200, LEVEL_CENTRE.z + Math.sin(angle) * reach, size, 0.7, 3);
+  }
+
+  const group = new THREE.Group();
+  const sphere = new THREE.SphereGeometry(1, 20, 14);
+  for (const [list, fog] of [[near, true], [far, false]] as const) {
+    // Emissive keeps the shaded side of a cloud a soft blue instead of grey.
+    const material = new THREE.MeshToonMaterial({ color: '#ffffff', emissive: '#b4c6f5', emissiveIntensity: 0.55, gradientMap: ramp, fog });
+    const mesh = new THREE.InstancedMesh(sphere, material, list.length);
+    list.forEach((matrix, i) => mesh.setMatrixAt(i, matrix));
+    mesh.receiveShadow = fog;
+    group.add(mesh);
+  }
   return group;
 }
 
 // --- Things that move or glow --------------------------------------------------------------------
 
 function buildGlider() {
-  const glider = new THREE.Group();
-  const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide });
-
   // The nose points down -Z. A cream centre panel between two coral ones, tips raised.
   const nose = [0, 0, -1.8];
   const tail = [0, 0.05, 0.45];
@@ -214,25 +387,24 @@ function buildGlider() {
     new THREE.Float32BufferAttribute([-1, 1].flatMap((side) => [...nose, ...tip(side), ...seam(side), ...nose, ...seam(side), ...tail]), 3),
   );
   wing.setAttribute('color', new THREE.Float32BufferAttribute([0, 1].flatMap(() => [...coral, ...coral, ...coral, ...cream, ...cream, ...cream]), 3));
-  glider.add(new THREE.Mesh(wing, material));
+  wing.computeVertexNormals();
+  const sail = new THREE.Mesh(wing, new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: ramp, side: THREE.DoubleSide }));
+  sail.add(new THREE.LineSegments(new THREE.EdgesGeometry(wing, 1), new THREE.LineBasicMaterial({ color: INK })));
 
-  const part = (w: number, h: number, d: number, x: number, y: number, z: number, color: string) => {
-    const geometry = new THREE.BoxGeometry(w, h, d).toNonIndexed();
-    const c = new THREE.Color(color);
-    geometry.setAttribute('color', new THREE.Float32BufferAttribute(Array.from({ length: 36 }, () => [c.r, c.g, c.b]).flat(), 3));
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(x, y, z);
-    glider.add(mesh);
-  };
-  part(0.14, 0.14, 2.4, 0, -0.06, -0.5, '#b98a62'); // keel
-  part(4.2, 0.1, 0.1, 0, 0.12, 0.55, '#b98a62'); // cross bar
-  part(0.4, 0.42, 1.0, 0, -0.55, 0.25, '#4f6291'); // pilot
-  part(0.34, 0.34, 0.34, 0, -0.45, -0.45, '#f6d2b0'); // head
-  part(0.38, 0.14, 0.38, 0, -0.24, -0.45, '#7a5a48'); // cap
-  part(0.12, 0.06, 1.2, 0.12, -0.34, 0.5, '#e5445a'); // scarf
-  part(0.6, 0.45, 0.6, 0, -1.0, 0.2, '#c08a55'); // parcel
-  part(0.64, 0.1, 0.14, 0, -1.0, 0.2, '#f4ead8'); // parcel string
-  glider.traverse((child) => (child.castShadow = true));
+  // The frame, pilot and parcel are primitives like the level, so they get the same paint and ink.
+  const part = (w: number, h: number, d: number, x: number, y: number, z: number, color: string): Prim => ({ kind: 'box', pos: [x, y, z], size: [w, h, d], color });
+  const glider = build([
+    part(0.14, 0.14, 2.4, 0, -0.06, -0.5, '#b98a62'), // keel
+    part(4.2, 0.1, 0.1, 0, 0.12, 0.55, '#b98a62'), // cross bar
+    part(0.4, 0.42, 1.0, 0, -0.55, 0.25, '#4f6291'), // pilot
+    { kind: 'sphere', pos: [0, -0.45, -0.45], radius: 0.2, color: '#f6d2b0' }, // head
+    part(0.38, 0.14, 0.38, 0, -0.26, -0.45, '#7a5a48'), // cap
+    part(0.12, 0.06, 1.2, 0.12, -0.34, 0.5, '#e5445a'), // scarf
+    part(0.6, 0.45, 0.6, 0, -1.0, 0.2, '#c08a55'), // parcel
+    part(0.64, 0.1, 0.14, 0, -1.0, 0.2, '#f4ead8'), // parcel string
+  ]);
+  glider.add(sail);
+  glider.traverse((child) => (child.castShadow = child instanceof THREE.Mesh && child.material !== inkMaterial));
   return glider;
 }
 
@@ -328,17 +500,19 @@ export function createScene(canvas: HTMLCanvasElement) {
   renderer.shadowMap.enabled = true;
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(SKY.horizon, 500, 2600);
+  scene.fog = new THREE.Fog(SKY.horizon, 600, 2900);
   const camera = new THREE.PerspectiveCamera(config.camera.baseFov, 1, 0.5, 4000);
 
-  scene.add(new THREE.HemisphereLight('#d6e9ff', '#c3a6e6', 1.5));
-  const sun = new THREE.DirectionalLight('#ffdcae', 2.6);
+  // The sky light is what shade is painted with, so it is strong and blue.
+  scene.add(new THREE.HemisphereLight('#dcecff', '#a9b6ec', 1.6));
+  const sun = new THREE.DirectionalLight('#fff1d6', 2.1);
   sun.position.copy(LEVEL_CENTRE).addScaledVector(SUN_DIRECTION, 1000);
   sun.target.position.copy(LEVEL_CENTRE);
   // One shadow map covers the whole level, so islands shade each other and the clouds below.
   sun.castShadow = true;
   sun.shadow.mapSize.set(4096, 4096);
-  sun.shadow.normalBias = 0.5;
+  sun.shadow.normalBias = 1.2;
+  sun.shadow.bias = -0.0003;
   Object.assign(sun.shadow.camera, { left: -620, right: 620, top: 620, bottom: -620, near: 200, far: 1900 });
   scene.add(sun, sun.target);
 
@@ -346,7 +520,7 @@ export function createScene(canvas: HTMLCanvasElement) {
   const glider = buildGlider();
   const ringMeshes = buildRings();
   const updraftMotes = buildUpdrafts();
-  scene.add(sky, buildClouds(), buildBeacon(), glider, updraftMotes.points, ...ringMeshes, ...prims.map(meshFor));
+  scene.add(sky, buildLand(), buildClouds(), buildBeacon(), glider, updraftMotes.points, ...ringMeshes, build(prims));
 
   const resize = () => {
     renderer.setSize(innerWidth, innerHeight, false);
