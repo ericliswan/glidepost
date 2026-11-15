@@ -29,7 +29,7 @@ Then open the address Vite prints (usually http://localhost:5173).
 | Back to the deck | R | |
 
 Land on the gold pad next to the lighthouse at under 72 km/h. Under 50 km/h is a perfect landing.
-Hitting anything, or sinking into the clouds, puts you back on the deck a second later.
+Hitting anything, or sinking below the clouds, puts you back on the deck a second later.
 
 ## Three ways to gain energy
 
@@ -45,7 +45,8 @@ route dives along the waterfall cliff through the ring line and can be done in u
 ## How it is built
 
 TypeScript, [Three.js](https://threejs.org) and [Vite](https://vite.dev). There is no physics
-engine and there are no asset files: the level is built from boxes, cones and spheres, and all
+engine and there are no asset files: the level is built from boxes, cones and spheres, drawn like
+a storybook with flat shading and ink outlines, and all
 sound is synthesised.
 
 | File | What it does |

@@ -84,7 +84,7 @@ describe('rules', () => {
     expect(game.glider.x).toBe(spawn.x);
   });
 
-  it('is lost when it drops into the cloud sea', () => {
+  it('is lost when it drops below the clouds', () => {
     const game = flyingAt({ x: 300, y: 30, z: 300, pitch: -0.5 });
     expect(untilEvent(game)).toEqual({ type: 'crashed', reason: 'clouds' });
   });
@@ -123,7 +123,7 @@ describe('routes', () => {
     const game = createGame();
     launch(game);
     while (game.phase === 'flying' && !overPad(game)) step(game, steer(game, pad.x, pad.z, BEST_GLIDE), DT);
-    // Either it arrives under the island or it is already in the clouds.
+    // Either it arrives under the island or it is already below the clouds.
     expect(game.glider.y).toBeLessThan(pad.y);
   });
 
