@@ -1,0 +1,172 @@
+import { describe, expect, it } from 'vitest';
+import { config } from './config';
+import type { FlightInput } from './flight';
+import { createGame, launch, step, type Game, type GameEvent } from './game';
+import { cliffFace, distanceToWorld, liftAt, pad, rings, spawn, updrafts } from './world';
+
+const DT = 1 / 120;
+const HANDS_OFF: FlightInput = { pitch: 0, turn: 0, boost: false, brake: false };
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+/** A game already in flight, with the glider moved somewhere specific. */
+function flyingAt(over: Partial<Game['glider']>): Game {
+  const game = createGame();
+  launch(game);
+  Object.assign(game.glider, over);
+  return game;
+}
+
+/** Steps until the game produces an event that is not a ring, or time runs out. */
+function untilEvent(game: Game, input = HANDS_OFF, seconds = 30): GameEvent | null {
+  for (let t = 0; t < seconds; t += DT) {
+    const event = step(game, input, DT);
+    if (event && event.type !== 'ring') return event;
+  }
+  return null;
+}
+
+/** Autopilot: turn towards a point on the map and hold a pitch. */
+function steer(game: Game, x: number, z: number, pitch: number): FlightInput {
+  const g = game.glider;
+  const off = Math.atan2(-(x - g.x), -(z - g.z)) - g.yaw;
+  const error = Math.atan2(Math.sin(off), Math.cos(off));
+  return { ...HANDS_OFF, turn: clamp(-error * 3, -1, 1), pitch: clamp((pitch - g.pitch) * 5, -1, 1) };
+}
+
+const overPad = (game: Game) => Math.hypot(game.glider.x - pad.x, game.glider.z - pad.z) < pad.radius;
+const BEST_GLIDE = -0.11;
+
+describe('level', () => {
+  it('measures distance to boxes, cones and open air', () => {
+    // Above the flat top of the waterfall rock (grass slab top is at y = 156).
+    expect(distanceToWorld(112, 160, -385)).toBeCloseTo(4);
+    // Beside the cliff face.
+    expect(distanceToWorld(cliffFace - 5, 100, -385)).toBeCloseTo(5);
+    // Inside the rock.
+    expect(distanceToWorld(112, 100, -385)).toBeLessThan(0);
+    // Above the landing pad, a cylinder.
+    expect(distanceToWorld(pad.x, pad.y + 3, pad.z)).toBeCloseTo(3);
+  });
+
+  it('starts the glider clear of the launch deck', () => {
+    expect(distanceToWorld(spawn.x, spawn.y, spawn.z)).toBeGreaterThan(config.glider.radius * 2);
+  });
+
+  it('leaves room to fly through every ring', () => {
+    for (const ring of rings) {
+      expect(distanceToWorld(...ring.pos)).toBeGreaterThan(config.rings.radius + config.glider.radius);
+    }
+  });
+
+  it('has lift inside updrafts and none outside', () => {
+    const u = updrafts[0];
+    expect(liftAt(u.x, u.base + 40, u.z)).toBe(u.strength);
+    expect(liftAt(u.x + u.radius + 1, u.base + 40, u.z)).toBe(0);
+    expect(liftAt(u.x, u.top + 1, u.z)).toBe(0);
+  });
+});
+
+describe('rules', () => {
+  it('waits on the deck until launched', () => {
+    const game = createGame();
+    step(game, HANDS_OFF, 1);
+    expect(game.glider.z).toBe(spawn.z);
+    launch(game);
+    step(game, HANDS_OFF, DT);
+    expect(game.glider.z).toBeLessThan(spawn.z);
+  });
+
+  it('crashes into the cliff, then puts the glider back on the deck', () => {
+    const game = flyingAt({ x: cliffFace - 30, y: 100, z: -385, yaw: -Math.PI / 2, pitch: 0 });
+    expect(untilEvent(game)).toEqual({ type: 'crashed', reason: 'hit' });
+    expect(untilEvent(game)).toEqual({ type: 'reset' });
+    expect(game.phase).toBe('ready');
+    expect(game.glider.x).toBe(spawn.x);
+  });
+
+  it('is lost when it drops into the cloud sea', () => {
+    const game = flyingAt({ x: 300, y: 30, z: 300, pitch: -0.5 });
+    expect(untilEvent(game)).toEqual({ type: 'crashed', reason: 'clouds' });
+  });
+
+  it('lands on the pad when slow enough', () => {
+    const game = flyingAt({ x: pad.x, y: pad.y + 3, z: pad.z + 8, pitch: -0.3, speed: 18 });
+    expect(untilEvent(game)).toEqual({ type: 'landed', perfect: false });
+    expect(game.phase).toBe('landed');
+  });
+
+  it('rewards a slow touchdown as a perfect landing', () => {
+    const game = flyingAt({ x: pad.x, y: pad.y + 2, z: pad.z + 6, pitch: -0.3, speed: 12 });
+    expect(untilEvent(game)).toEqual({ type: 'landed', perfect: true });
+  });
+
+  it('crashes when landing too fast', () => {
+    const game = flyingAt({ x: pad.x, y: pad.y + 3, z: pad.z + 8, pitch: -0.3, speed: 40 });
+    expect(untilEvent(game)).toEqual({ type: 'crashed', reason: 'hardLanding' });
+  });
+
+  it('charges boost while skimming the cliff and not in open air', () => {
+    const skimming = flyingAt({ x: cliffFace - 3, y: 100, z: -330, pitch: -0.1, speed: 35 });
+    const open = flyingAt({ x: cliffFace - 40, y: 100, z: -330, pitch: -0.1, speed: 35 });
+    for (let t = 0; t < 1; t += DT) {
+      step(skimming, HANDS_OFF, DT);
+      step(open, HANDS_OFF, DT);
+    }
+    expect(skimming.phase).toBe('flying');
+    expect(skimming.glider.boost).toBeGreaterThan(0.1);
+    expect(open.glider.boost).toBe(0);
+  });
+});
+
+describe('routes', () => {
+  it('cannot reach the lighthouse by gliding straight there', () => {
+    const game = createGame();
+    launch(game);
+    while (game.phase === 'flying' && !overPad(game)) step(game, steer(game, pad.x, pad.z, BEST_GLIDE), DT);
+    // Either it arrives under the island or it is already in the clouds.
+    expect(game.glider.y).toBeLessThan(pad.y);
+  });
+
+  it('reaches the lighthouse with height to spare by climbing a market updraft', () => {
+    const game = createGame();
+    launch(game);
+    const u = updrafts[1];
+    const fromColumn = () => Math.hypot(game.glider.x - u.x, game.glider.z - u.z);
+
+    while (game.phase === 'flying' && fromColumn() > 10) step(game, steer(game, u.x, u.z, BEST_GLIDE), DT);
+    while (game.phase === 'flying' && game.glider.y < 185) {
+      // Circle: keep turning while near the middle, head back in when drifting out.
+      const input = steer(game, u.x, u.z, -0.2);
+      if (fromColumn() < 12) input.turn = 1;
+      step(game, input, DT);
+    }
+    while (game.phase === 'flying' && !overPad(game)) step(game, steer(game, pad.x, pad.z, BEST_GLIDE), DT);
+
+    expect(game.phase).toBe('flying');
+    expect(game.glider.y).toBeGreaterThan(pad.y + 20);
+    expect(game.time).toBeLessThan(60);
+  });
+
+  it('is much faster down the ring line, chaining every ring', () => {
+    const game = createGame();
+    launch(game);
+    let next = 0;
+    let topSpeed = 0;
+    while (game.phase === 'flying' && !(next === rings.length && overPad(game))) {
+      const g = game.glider;
+      while (next < rings.length && (game.ringsHit[next] || g.z < rings[next].pos[2] - 5)) next++;
+      const [x, y, z] = rings[next]?.pos ?? [pad.x, pad.y + 25, pad.z];
+      const climb = Math.atan2(y - g.y, Math.hypot(x - g.x, z - g.z));
+      step(game, steer(game, x, z, clamp(climb, -1.2, 1)), DT);
+      topSpeed = Math.max(topSpeed, g.speed);
+    }
+
+    expect(game.phase).toBe('flying');
+    expect(game.ringsHit).not.toContain(false);
+    expect(game.chain).toBe(rings.length);
+    expect(game.time).toBeLessThan(25);
+    // Fast, but not so fast the rings stop being flyable.
+    expect(topSpeed).toBeGreaterThan(50);
+    expect(topSpeed).toBeLessThan(75);
+  });
+});
