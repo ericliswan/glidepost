@@ -74,13 +74,17 @@ a turn. Bank is automatic and visual.
 
 ## A delivery
 
-1. **Launch.** You start on the launch deck of the post office with the parcel already on board.
+1. **Briefing.** On the launch deck, Postmaster Orso tells you who the parcel is for and how to
+   get there. It plays once; a retry goes straight to the launch.
+2. **Launch.** You start on the launch deck of the post office with the parcel already on board.
    The clock starts the moment you leave the deck.
-2. **Fly.** No fixed route. A beacon of light marks the destination from anywhere on the map.
-3. **Land.** Touch down on the landing pad below the maximum landing speed. Too fast is a crash.
+3. **Fly.** No fixed route. A beacon of light marks the destination from anywhere on the map.
+4. **Land.** Touch down on the landing pad below the maximum landing speed. Too fast is a crash.
    Slowing down means pulling up to bleed speed (a flare) or using the airbrake. A touchdown well
    under the limit is a *perfect landing*.
-4. **Result.** Your time, and your best time for the route (kept locally).
+5. **Thanks.** Marigold, the lighthouse keeper, thanks you, and remarks on how gently you landed
+   and how quickly you came.
+6. **Result.** Your time, and your best time for the route (kept locally).
 
 Failure states, all followed by an instant return to the launch deck:
 
@@ -112,6 +116,8 @@ villages.
   picture.
 - The glider is a paper dart with a seat: the courier rides it with the parcel strapped on behind.
 - Streets are dressed to feel lived in: bunting, lamps, market stalls, barrels and crates.
+- People talk in a dialogue box: a portrait, a name tag and a line that writes itself out. Space
+  or a click turns the page, and R skips the talk.
 - Camera sits behind the glider, widens its field of view with speed, and shakes slightly under boost.
 - Wind noise rises with speed. Rings, boost, landing and crashing each have their own sound.
 - All sound is synthesised; there are no audio files to download.
@@ -145,6 +151,7 @@ In scope:
 - A ring line with chaining
 - Wall-skim boost charging and the boost meter
 - One timed delivery from the post office to the lighthouse, with landing
+- A briefing from the postmaster before the flight and a thank-you from the keeper after it
 - HUD: speed, altitude, boost meter, timer, ring chain, distance to destination, best time
 - Chase camera with speed-based field of view
 - Keyboard and mouse controls, instant restart

@@ -4,8 +4,8 @@ A cosy 3D browser game about delivering parcels through a floating town on a gli
 
 ![The courier diving into Chimney Lane, between two towers and under the bunting](docs/screenshot.png)
 
-You are the courier. You launch from the post office with a parcel for the lighthouse keeper
-strapped on behind you. The glider has no engine,
+You are the courier. Postmaster Orso hands you a parcel for Marigold, the lighthouse keeper, and
+you launch from the post office with it strapped on behind you. The glider has no engine,
 so every metre of height and every bit of speed has to come from somewhere. Getting there is easy.
 Getting there fast is the game.
 
@@ -22,15 +22,16 @@ Then open the address Vite prints (usually http://localhost:5173).
 
 | Action | Keyboard | Mouse |
 | --- | --- | --- |
-| Launch | Space | Click |
+| Next line of dialogue, launch | Space | Click |
 | Dive / pull up | W / S or ↑ / ↓ | Move down / up |
 | Turn | A / D or ← / → | Move left / right |
 | Boost | Space | Left button |
 | Airbrake | Shift | Right button |
-| Back to the deck | R | |
+| Back to the deck, skip dialogue | R | |
 
 Land on the gold pad next to the lighthouse at under 72 km/h. Under 50 km/h is a perfect landing.
 Hitting anything, or sinking below the clouds, puts you back on the deck a second later.
+Land it and Marigold has a word for you about how the parcel arrived.
 
 ## Three ways to gain energy
 
@@ -63,6 +64,8 @@ flat shading and ink outlines, and all sound is synthesised.
 | `src/input.ts` | Keyboard and mouse. |
 | `src/audio.ts` | Wind and sound effects. |
 | `src/hud.ts` | The numbers and messages on screen. |
+| `src/story.ts` | Who speaks, and what they say before and after the flight. |
+| `src/dialogue.ts` | The dialogue box: portrait, name and typed-out text. |
 | `src/main.ts` | The frame loop and chase camera. |
 
 The flight model and the rules do not touch the renderer, so the tests fly both routes with an
@@ -85,6 +88,6 @@ scope, and what comes later (ghost replays, parcel types, more islands, a daily 
 ## Credits
 
 The buildings and props are from the [KayKit Medieval Hexagon Pack](https://kaylousberg.itch.io/kaykit-medieval-hexagon)
-and the courier is from the [KayKit Adventurers pack](https://kaylousberg.itch.io/kaykit-adventurers),
+and the courier and the two portraits are from the [KayKit Adventurers pack](https://kaylousberg.itch.io/kaykit-adventurers),
 both by [Kay Lousberg](https://www.kaylousberg.com) and released under
 [CC0](https://creativecommons.org/publicdomain/zero/1.0/).
