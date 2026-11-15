@@ -86,7 +86,7 @@ export const config = {
   },
 
   world: {
-    // Dropping below this height means you are lost in the cloud sea.
+    // Dropping below this height, under the clouds, means you are lost.
     cloudLevel: 6,
     // Seconds between a crash and being back on the launch deck.
     respawnDelay: 0.9,

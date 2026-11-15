@@ -85,7 +85,7 @@ a turn. Bank is automatic and visual.
 Failure states, all followed by an instant return to the launch deck:
 
 - **Crash:** touching anything that is not the landing pad, or landing too fast.
-- **Lost in the clouds:** dropping into the cloud sea beneath the islands.
+- **Lost beneath the clouds:** dropping below the clouds that drift under the islands.
 
 ## World
 
@@ -99,11 +99,12 @@ routes between the post office and the lighthouse:
 | **Waterfall rock** | The fast route. A cliff face to skim, a ring line threaded past it, and a strong updraft in the mist at its base. |
 | **Lighthouse** | Destination. Landing pad on a small plateau; the lighthouse itself is the landmark. |
 
-Below everything is a sea of clouds. Above is a lot of open sky.
+Far below, through gaps in the clouds, is a patchwork of fields, woods and villages. Above is a lot of open sky.
 
 ## Look, sound and feel
 
-- Low-poly, flat-shaded, soft pastel palette, warm sun, distance haze.
+- A storybook illustration: flat cel shading with ink outlines, steep cottage roofs, round trees,
+  heaped cumulus, warm light with cool blue shade, and paper grain over the whole picture.
 - Camera sits behind the glider, widens its field of view with speed, and shakes slightly under boost.
 - Wind noise rises with speed. Rings, boost, landing and crashing each have their own sound.
 - All sound is synthesised; there are no audio files to download.
@@ -128,7 +129,7 @@ One question: **is flying fun?**
 
 In scope:
 
-- Four islands, cloud sea, sky
+- Four islands, clouds, countryside far below, sky
 - Flight model: glide, dive/climb trade, turning, stall, airbrake
 - Three or more updrafts, visible in the world
 - A ring line with chaining

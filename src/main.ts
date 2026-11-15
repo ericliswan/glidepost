@@ -80,7 +80,7 @@ function handle(event: GameEvent) {
     audio.crash();
     hud.message(
       event.reason === 'clouds'
-        ? 'Lost in the clouds'
+        ? 'Too low! Lost beneath the clouds'
         : event.reason === 'hardLanding'
           ? `Too fast! Land under ${Math.round(config.landing.maxSpeed * 3.6)} km/h`
           : 'Bumped!',
