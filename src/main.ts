@@ -11,7 +11,8 @@ import { createScene } from './scene';
 const BEST_KEY = 'glidepost.best';
 const MAX_STEP = 1 / 120;
 const READY = `<strong>Glidepost</strong>A parcel for the lighthouse keeper.
-W / S dive and pull up · A / D turn · Space boost · Shift airbrake
+W / S dive and pull up · A / D turn
+Space boost · Shift airbrake
 Press Space or click to launch`;
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
