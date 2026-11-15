@@ -1,10 +1,11 @@
 # Glidepost
 
-A cosy 3D browser game about delivering parcels between floating islands on a glider.
+A cosy 3D browser game about delivering parcels through a floating town on a glider.
 
-![The glider above the market town, with the waterfall rock and the lighthouse ahead](docs/screenshot.png)
+![The courier diving into Chimney Lane, between two towers and under the bunting](docs/screenshot.png)
 
-You launch from the post office with a parcel for the lighthouse keeper. The glider has no engine,
+You are the courier. You launch from the post office with a parcel for the lighthouse keeper
+strapped on behind you. The glider has no engine,
 so every metre of height and every bit of speed has to come from somewhere. Getting there is easy.
 Getting there fast is the game.
 
@@ -36,24 +37,27 @@ Hitting anything, or sinking below the clouds, puts you back on the deck a secon
 | Source | What it gives | The catch |
 | --- | --- | --- |
 | **Updrafts** (rising white motes) | Height, for free | Slow. Circling costs time. |
-| **Boost rings** | An instant kick, bigger for each ring you chain | The line runs right past a cliff. |
+| **Boost rings** | An instant kick, bigger for each ring you chain | The line runs down a street, through a tunnel and past market stalls. |
 | **Skimming** | Fly within a few metres of any surface to fill the boost meter | One twitch and you hit it. |
 
-The safe route circles up over the market town's chimneys and takes about 45 seconds. The fast
-route dives along the waterfall cliff through the ring line and can be done in under 20.
+The safe route circles up over the market town's chimneys and takes most of a minute. The fast
+route follows the ring line: between the gate towers, down Chimney Lane, through the tunnel under
+the waterfall rock, along the terrace market, under the viaduct and between the windmills. It can
+be done in under 25 seconds.
 
 ## How it is built
 
 TypeScript, [Three.js](https://threejs.org) and [Vite](https://vite.dev). There is no physics
-engine and there are no asset files: the level is built from boxes, cones and spheres, drawn like
-a storybook with flat shading and ink outlines, and all
-sound is synthesised.
+engine. Rock, trees and clouds are built from boxes, cones and spheres; the buildings, market
+props and the courier are [imported models](#credits). Everything is drawn like a storybook, with
+flat shading and ink outlines, and all sound is synthesised.
 
 | File | What it does |
 | --- | --- |
 | `src/config.ts` | Every tuning value. Start here to change how the game feels. |
 | `src/flight.ts` | The flight model: speed, drag, stall, boost. |
 | `src/world.ts` | The level layout, and the distance queries for crashing and skimming. |
+| `src/models.json` | The size and collision boxes of each model, written by `scripts/measure-models.mjs`. |
 | `src/game.ts` | The rules of a delivery: launch, rings, landing, crashing. |
 | `src/scene.ts` | Everything you see. |
 | `src/input.ts` | Keyboard and mouse. |
@@ -69,7 +73,18 @@ npm test         # run the tests
 npm run build    # type-check and build to dist/
 ```
 
+A model collides as a stack of five boxes that follows its outline, so you can fly past a roof
+ridge without hitting the air next to it. After adding or changing a file in `public/models`, run
+`node scripts/measure-models.mjs` to measure it again.
+
 ## Design
 
 [docs/DESIGN.md](docs/DESIGN.md) has the full design: the pillars, the flight model, the prototype
 scope, and what comes later (ghost replays, parcel types, more islands, a daily route).
+
+## Credits
+
+The buildings and props are from the [KayKit Medieval Hexagon Pack](https://kaylousberg.itch.io/kaykit-medieval-hexagon)
+and the courier is from the [KayKit Adventurers pack](https://kaylousberg.itch.io/kaykit-adventurers),
+both by [Kay Lousberg](https://www.kaylousberg.com) and released under
+[CC0](https://creativecommons.org/publicdomain/zero/1.0/).

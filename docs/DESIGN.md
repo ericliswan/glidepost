@@ -1,6 +1,6 @@
 # Glidepost — Design
 
-A 3D browser game about delivering parcels between floating islands on a small glider.
+A 3D browser game about delivering parcels through a town of floating islands on a small glider.
 Flying is the game: it should feel good with nothing to do, and reward players who find
 faster, riskier lines. Cosy to look at, sharp to play.
 
@@ -89,22 +89,29 @@ Failure states, all followed by an instant return to the launch deck:
 
 ## World
 
-The full game is one cluster of 8–10 islands. The prototype has four, arranged to offer two clear
-routes between the post office and the lighthouse:
+One town spread over a cluster of floating islands, built up rather than out: towers, timber
+houses, bridges and markets stacked close enough that the fast line goes *through* the town, not
+over it. Two clear routes lead from the post office to the lighthouse:
 
-| Island | Role |
+| Place | Role |
 | --- | --- |
 | **Post office** | High start. Launch deck on a tower. |
-| **Market town** | The safe route. Chimney updrafts carry you back up for the long glide to the lighthouse. |
-| **Waterfall rock** | The fast route. A cliff face to skim, a ring line threaded past it, and a strong updraft in the mist at its base. |
+| **Market town** | The safe route. Chimney updrafts over the taverns carry you back up for the long glide to the lighthouse. |
+| **Ring line** | The fast route, in order: between the gate towers above their footbridge, down Chimney Lane between two rows of houses, through the tunnel under the waterfall rock, along the terrace market beside the cliff, under the viaduct, and between the windmills. |
+| **Waterfall rock** | A cliff face to skim, with a strong updraft in the mist at its base. |
 | **Lighthouse** | Destination. Landing pad on a small plateau; the lighthouse itself is the landmark. |
 
-Far below, through gaps in the clouds, is a patchwork of fields, woods and villages. Above is a lot of open sky.
+Small hamlets on their own islets fill the sky around the route, so there is always something
+near enough to skim. Far below, through gaps in the clouds, is a patchwork of fields, woods and
+villages.
 
 ## Look, sound and feel
 
-- A storybook illustration: flat cel shading with ink outlines, steep cottage roofs, round trees,
-  heaped cumulus, warm light with cool blue shade, and paper grain over the whole picture.
+- A storybook illustration: flat cel shading with ink outlines, timber houses with bright roofs,
+  round trees, heaped cumulus, warm light with cool blue shade, and paper grain over the whole
+  picture.
+- The glider is a paper dart with a seat: the courier rides it with the parcel strapped on behind.
+- Streets are dressed to feel lived in: bunting, lamps, market stalls, barrels and crates.
 - Camera sits behind the glider, widens its field of view with speed, and shakes slightly under boost.
 - Wind noise rises with speed. Rings, boost, landing and crashing each have their own sound.
 - All sound is synthesised; there are no audio files to download.
@@ -118,6 +125,9 @@ Far below, through gaps in the clouds, is a patchwork of fields, woods and villa
 - **World** is built from a handful of primitives (boxes, cones, cylinders, spheres). The same
   definitions produce both the meshes and an analytic distance function, so one query answers
   "did I crash?" and "how close am I skimming?".
+- **Buildings, props and the courier** are imported CC0 models (KayKit, by Kay Lousberg). Each
+  building collides as a stack of invisible boxes measured from its mesh, so what you hit still
+  matches what you see.
 - **Tuning** lives in a single config file: gravity, drag, turn rates, boost, rings, landing limits.
 - **Targets:** 60 fps on a typical laptop, initial load well under five seconds.
 
@@ -129,7 +139,7 @@ One question: **is flying fun?**
 
 In scope:
 
-- Four islands, clouds, countryside far below, sky
+- One floating town with a route through it, clouds, countryside far below, sky
 - Flight model: glide, dive/climb trade, turning, stall, airbrake
 - Three or more updrafts, visible in the world
 - A ring line with chaining
