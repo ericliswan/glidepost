@@ -1,8 +1,10 @@
 import { config } from './config';
+import models from './models.json';
 
 // The level: what it is made of, and the questions the game asks about it.
-// No rendering here. scene.ts turns the same primitives into meshes, so what you see is
-// exactly what you collide with.
+// No rendering here. scene.ts draws the same primitives and models, so what you see is what
+// you collide with. Rock, towers and trees are primitives; buildings are imported models, each
+// with a stack of invisible boxes that follows its outline.
 
 export type Vec3 = [number, number, number];
 
@@ -13,6 +15,8 @@ interface Base {
   rotY?: number;
   /** False for scenery you can fly through. */
   solid?: boolean;
+  /** True for the invisible boxes that stand in for a model. */
+  hidden?: boolean;
 }
 
 export type Prim =
@@ -27,6 +31,16 @@ export interface Updraft {
   top: number;
   radius: number;
   strength: number;
+}
+
+export type ModelName = keyof typeof models;
+
+/** One copy of an imported model, standing on the ground at pos. */
+export interface Placement {
+  name: ModelName;
+  pos: Vec3;
+  rotY: number;
+  scale: number;
 }
 
 export interface Ring {
@@ -65,8 +79,32 @@ export const palette = {
 const flowers = ['#ffffff', '#ffd84d', '#ff8fb0', '#f2615a', '#b48cf0'];
 
 export const prims: Prim[] = [];
+export const placements: Placement[] = [];
 export const updrafts: Updraft[] = [];
+/** Islands that ride on a wreath of cloud. */
 export const islands: { x: number; top: number; z: number; r: number }[] = [];
+
+// Solid shapes, with what the distance query needs worked out once. Filled as the level is
+// built, so the builders below can ask what is already standing somewhere.
+const solids: { prim: Prim; bound: number; sin: number; cos: number }[] = [];
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
+function add(prim: Prim) {
+  prims.push(prim);
+  if (prim.solid === false) return;
+  solids.push({
+    prim,
+    // Radius of a sphere around pos that contains the whole shape, for cheap rejection.
+    bound:
+      prim.kind === 'box'
+        ? Math.hypot(...prim.size) / 2
+        : prim.kind === 'cone'
+          ? Math.hypot(Math.max(prim.rTop, prim.rBottom), prim.height / 2)
+          : prim.radius,
+    sin: Math.sin(prim.rotY ?? 0),
+    cos: Math.cos(prim.rotY ?? 0),
+  });
+}
 
 /** Small seeded generator, so scattered things are in the same place on every load. */
 export function seeded(seed: number) {
@@ -74,44 +112,120 @@ export function seeded(seed: number) {
 }
 const random = seeded(7);
 
-// Builders take the height of the *bottom* of a shape, which is what you know when placing
-// things on the ground.
+/** A random spot on a round patch of ground. */
+function scatter(x: number, z: number, r: number) {
+  const angle = random() * Math.PI * 2;
+  const reach = Math.sqrt(random()) * r;
+  return [x + Math.cos(angle) * reach, z + Math.sin(angle) * reach];
+}
+
+// --- Where the route goes ----------------------------------------------------------------------
+// Fixed first, because the scenery is built round it.
+
+export const spawn = { x: 0, y: 151.2, z: -31, yaw: 0 };
+const market = { x: -90, top: 62, z: -300 };
+const rock = { x: 112, top: 46, z: -385 };
+// The cliff face the ring line runs along, at x = cliffFace.
+export const cliffFace = rock.x - 28;
+const light = { x: 20, top: 96, z: -775 };
+export const pad = { x: light.x - 12, y: light.top + 2, z: light.z + 20, radius: 10 };
+
+const ringLine: Vec3[] = [
+  [34, 132, -110], // the gate
+  [48, 108, -200], // Chimney Lane
+  [70, 90, -290],
+  [cliffFace - 10, 80, -360], // inside the tunnel
+  [cliffFace - 10, 78, -420], // the terrace market
+  [62, 100, -520], // under the viaduct
+  [40, 112, -620], // between the windmills
+];
+const route: Vec3[] = [[spawn.x, spawn.y, spawn.z], ...ringLine, [pad.x, pad.y, pad.z]];
+
+// Each ring faces along the line from the ring before it to the ring after it.
+export const rings: Ring[] = ringLine.map((pos, i) => {
+  const from = route[i];
+  const to = route[i + 2];
+  const d = [to[0] - from[0], to[1] - from[1], to[2] - from[2]];
+  const len = Math.hypot(d[0], d[1], d[2]);
+  return { pos, normal: [d[0] / len, d[1] / len, d[2] / len] };
+});
+
+/** True if the ring line passes low over this spot, so nothing tall should grow there. */
+function underRoute(x: number, ground: number, z: number) {
+  return route.slice(1).some((b, i) => {
+    const a = route[i];
+    const dx = b[0] - a[0];
+    const dz = b[2] - a[2];
+    const t = clamp01(((x - a[0]) * dx + (z - a[2]) * dz) / (dx * dx + dz * dz));
+    const above = a[1] + (b[1] - a[1]) * t - ground;
+    return Math.hypot(x - a[0] - dx * t, z - a[2] - dz * t) < 14 && above > -2 && above < 30;
+  });
+}
+
+// --- Builders ----------------------------------------------------------------------------------
+// They take the height of the *bottom* of a shape, which is what you know when placing things
+// on the ground.
 
 function box(x: number, bottom: number, z: number, w: number, h: number, d: number, color: string, rotY = 0, solid = true) {
-  prims.push({ kind: 'box', pos: [x, bottom + h / 2, z], size: [w, h, d], color, rotY, solid });
+  add({ kind: 'box', pos: [x, bottom + h / 2, z], size: [w, h, d], color, rotY, solid });
 }
 
 function cone(x: number, bottom: number, z: number, rBottom: number, rTop: number, height: number, color: string, sides = 8, rotY = 0, solid = true) {
-  prims.push({ kind: 'cone', pos: [x, bottom + height / 2, z], height, rTop, rBottom, sides, color, rotY, solid });
+  add({ kind: 'cone', pos: [x, bottom + height / 2, z], height, rTop, rBottom, sides, color, rotY, solid });
 }
 
 /** Unlike the others, a ball is placed by its centre. */
 function ball(x: number, y: number, z: number, radius: number, color: string, solid = true) {
-  prims.push({ kind: 'sphere', pos: [x, y, z], radius, color, solid });
+  add({ kind: 'sphere', pos: [x, y, z], radius, color, solid });
 }
+
+// Models are a metre or two across as drawn; this makes a cottage a dozen metres tall.
+const MODEL_SCALE = 14;
+
+/** An imported model, with its door facing +Z before it is turned by rotY. */
+function model(name: ModelName, x: number, ground: number, z: number, rotY = 0, scale = MODEL_SCALE) {
+  placements.push({ name, pos: [x, ground, z], rotY, scale });
+  const sin = Math.sin(rotY);
+  const cos = Math.cos(rotY);
+  // Collision is the model cut into horizontal slabs, each one a box round that slab.
+  for (const [cx, cy, cz, w, h, d] of models[name].boxes) {
+    add({
+      kind: 'box',
+      pos: [x + (cx * cos + cz * sin) * scale, ground + cy * scale, z + (cz * cos - cx * sin) * scale],
+      size: [w * scale, h * scale, d * scale],
+      color: '',
+      rotY,
+      hidden: true,
+    });
+  }
+}
+
+/** How far a model reaches sideways from where it stands, in metres. */
+function reach(name: ModelName, scale = MODEL_SCALE) {
+  return Math.max(...models[name].boxes.map(([cx, , cz, w, , d]) => Math.max(Math.abs(cx) + w / 2, Math.abs(cz) + d / 2))) * scale;
+}
+
+/** The rotY that turns something at (x, z) to face (tx, tz). */
+const facing = (x: number, z: number, tx: number, tz: number) => Math.atan2(tx - x, tz - z);
 
 /** Patches of lighter and darker grass, and flowers too small to hit, strewn over a round lawn. */
 function meadow(x: number, top: number, z: number, r: number) {
-  const scatter = (within: number) => {
-    const angle = random() * Math.PI * 2;
-    const reach = Math.sqrt(random()) * within;
-    return [x + Math.cos(angle) * reach, z + Math.sin(angle) * reach];
-  };
   for (let i = 0; i < r / 5; i++) {
     const size = 4 + random() * r * 0.12;
-    const [px, pz] = scatter(r * 0.92 - size);
+    const [px, pz] = scatter(x, z, r * 0.92 - size);
     // Each patch is a hair taller than the last so overlapping ones do not flicker.
     cone(px, top, pz, size, size, 0.05 + i * 0.01, i % 2 ? palette.grassLight : palette.grassDark, 12, 0, false);
   }
   for (let i = 0; i < r * 2.5; i++) {
-    const [fx, fz] = scatter(r * 0.9);
+    const [fx, fz] = scatter(x, z, r * 0.9);
     const size = 0.4 + random() * 0.35;
     ball(fx, top + size * 0.3, fz, size, flowers[i % flowers.length], false);
   }
 }
 
-function island(x: number, top: number, z: number, r: number) {
-  islands.push({ x, top, z, r });
+/** A floating island. Ledges that grow out of a cliff have no wreath of cloud of their own. */
+function island(x: number, top: number, z: number, r: number, wreath = true) {
+  if (wreath) islands.push({ x, top, z, r });
   cone(x, top - 4, z, r * 0.93, r, 4, palette.grass, 18);
   cone(x, top - 4 - r * 1.1, z, r * 0.12, r * 0.93, r * 1.1, palette.rock, 9, x);
   meadow(x, top, z, r);
@@ -136,103 +250,145 @@ function bush(x: number, ground: number, z: number, s = 1) {
   ball(x + 1.4 * s, ground + 0.3 * s, z + 0.5 * s, 1.1 * s, palette.grassDark);
 }
 
-/** A cottage. Its door is on the side facing +Z before it is turned by rotY. */
-function house(x: number, ground: number, z: number, w: number, h: number, rotY: number, wall: string, roof: string, chimney = false) {
-  const sin = Math.sin(rotY);
-  const cos = Math.cos(rotY);
-  /** Where a point in the cottage's own frame (lx across the front, lz out of the door) is on the map. */
-  const at = (lx: number, lz: number) => [x + lx * cos + lz * sin, z - lx * sin + lz * cos];
-  const part = (lx: number, bottom: number, lz: number, sx: number, sy: number, sz: number, color: string, solid = false) => {
-    const [px, pz] = at(lx, lz);
-    box(px, bottom, pz, sx, sy, sz, color, rotY, solid);
-  };
-
-  box(x, ground, z, w, h, w, wall, rotY);
-  // A witch's-hat roof: wide eaves, then steep. A four-sided cone turned 45° sits square on the walls.
-  cone(x, ground + h, z, w * 0.92, w * 0.52, h * 0.25, roof, 4, rotY + Math.PI / 4);
-  cone(x, ground + h * 1.25, z, w * 0.52, 0, h * 0.7, roof, 4, rotY + Math.PI / 4);
-  if (chimney) {
-    part(w * 0.2, ground + h, -w * 0.2, 1.8, h * 0.9, 1.8, palette.stone, true);
-    const [cx, cz] = at(w * 0.2, -w * 0.2);
-    [0.8, 1.2, 1.7].forEach((size, i) => ball(cx + i * 1.1, ground + h * 1.9 + 1.4 + i * 2.2, cz - i * 0.6, size, palette.smoke, false));
-  }
-
-  // Trim stands a hand's width proud of the walls: you can see it, but it is not worth colliding with.
-  part(0, ground, 0, w + 0.5, 0.9, w + 0.5, palette.stone);
-  part(0, ground + h - 0.6, 0, w + 0.4, 0.6, w + 0.4, palette.timber);
-  for (const cx of [-1, 1]) for (const cz of [-1, 1]) part(cx * (w / 2 - 0.2), ground, cz * (w / 2 - 0.2), 0.7, h, 0.7, palette.timber);
-
-  for (const [nx, nz] of [[0, 1], [1, 0], [0, -1], [-1, 0]]) {
-    /** Something flat on this wall: `along` the wall from its middle, standing `out` from it. */
-    const onWall = (along: number, bottom: number, wide: number, tall: number, out: number, color: string) =>
-      part((nx * w) / 2 + nz * along, bottom, (nz * w) / 2 + nx * along, nx ? out * 2 : wide, tall, nz ? out * 2 : wide, color);
-    const front = nz === 1;
-    const sill = ground + h * 0.42;
-    for (const along of front ? [-w * 0.24] : [-w * 0.24, w * 0.24]) {
-      onWall(along, sill - 0.2, w * 0.24 + 0.4, h * 0.3 + 0.4, 0.12, palette.timber);
-      onWall(along, sill, w * 0.24, h * 0.3, 0.2, palette.window);
-      onWall(along, sill - 0.75, w * 0.24 + 0.5, 0.55, 0.45, flowers[(nx + 2 * nz + 5) % flowers.length]);
-    }
-    if (front) {
-      onWall(w * 0.22, ground, w * 0.22 + 0.4, h * 0.55 + 0.2, 0.12, palette.timber);
-      onWall(w * 0.22, ground, w * 0.22, h * 0.55, 0.2, palette.door);
-    }
+/** Up to `count` trees on a round patch of ground, wherever there is room and the route is clear. */
+function trees(x: number, ground: number, z: number, r: number, count: number) {
+  for (let tries = count * 8; count > 0 && tries > 0; tries--) {
+    const [tx, tz] = scatter(x, z, r);
+    // The ground is 6 m below this point, so anything nearer is a wall or another tree.
+    if (distanceToWorld(tx, ground + 6, tz) < 5 || underRoute(tx, ground, tz)) continue;
+    const kind = random();
+    const s = 0.8 + random() * 0.6;
+    if (kind < 0.35) pine(tx, ground, tz, s);
+    else if (kind < 0.85) oak(tx, ground, tz, s, kind < 0.6 ? palette.leaf : kind < 0.75 ? palette.moss : palette.blossom);
+    else bush(tx, ground, tz, s);
+    count--;
   }
 }
 
-// --- Post office: the high start -------------------------------------------------------------
+const PROPS: ModelName[] = ['barrel', 'crate_A_big', 'sack', 'crate_B_big', 'barrel', 'pallet', 'bucket_water', 'crate_long_A', 'wheelbarrow', 'resource_lumber'];
+
+/** Up to `count` barrels, crates and sacks left lying about on a round patch of ground. */
+function clutter(x: number, ground: number, z: number, r: number, count: number) {
+  for (let tries = count * 6; count > 0 && tries > 0; tries--) {
+    const [px, pz] = scatter(x, z, r);
+    if (distanceToWorld(px, ground + 4, pz) < 3.5) continue;
+    model(PROPS[Math.floor(random() * PROPS.length)], px, ground, pz, random() * Math.PI * 2);
+    count--;
+  }
+}
+
+/** A lantern on a post, too thin to hit. */
+function lamp(x: number, ground: number, z: number) {
+  cone(x, ground, z, 0.3, 0.2, 5, palette.timber, 6, 0, false);
+  ball(x, ground + 5.6, z, 0.8, palette.lamp, false);
+}
+
+/** A sagging string of flags between two points. You can fly through it. */
+function bunting(from: Vec3, to: Vec3, sag = 2) {
+  const d = [to[0] - from[0], to[1] - from[1], to[2] - from[2]];
+  const count = Math.floor(Math.hypot(d[0], d[2]) / 1.5);
+  for (let i = 1; i < count; i++) {
+    const t = i / count;
+    const y = from[1] + d[1] * t - sag * 4 * t * (1 - t);
+    box(from[0] + d[0] * t, y - 1.1, from[2] + d[2] * t, 1, 1.1, 0.12, flowers[i % flowers.length], Math.atan2(-d[2], d[0]), false);
+  }
+}
+
+function smoke(x: number, y: number, z: number) {
+  [1.2, 1.7, 2.4].forEach((size, i) => ball(x + i * 1.6, y + i * 3.2, z - i * 0.9, size, palette.smoke, false));
+}
+
+/** A small island with a few buildings standing in a ring, backs to each other, among trees. */
+function hamlet(x: number, top: number, z: number, r: number, names: ModelName[]) {
+  island(x, top, z, r);
+  const turn = random() * Math.PI * 2;
+  names.forEach((name, i) => {
+    const angle = turn + (i / names.length) * Math.PI * 2;
+    const out = names.length > 1 ? r * 0.45 : 0;
+    model(name, x + Math.sin(angle) * out, top, z + Math.cos(angle) * out, angle);
+  });
+  trees(x, top, z, r - 4, Math.ceil(r / 4));
+}
+
+// --- Post office: the high start ---------------------------------------------------------------
 
 island(0, 120, 0, 36);
-house(-13, 120, 10, 15, 10, 0.2, palette.wall, palette.terracotta, true);
+// The launch tower and its deck.
 cone(0, 120, -14, 5, 4.2, 28, palette.stone, 14);
 box(0, 148, -22, 6, 1, 22, palette.wood);
-box(14, 120, 14, 2, 3, 2, palette.terracotta);
-pine(-24, 120, -8, 1.2);
-oak(20, 120, -4);
-pine(22, 120, 16, 1.3);
-oak(-4, 120, 26, 0.9, palette.blossom);
-bush(8, 120, 22);
-bush(-26, 120, 8, 1.2);
+model('building_tavern_red', -15, 120, 10, facing(-15, 10, 2, 6));
+model('building_home_A_yellow', 17, 120, 13, facing(17, 13, 2, 6));
+model('building_home_B_blue', 19, 120, -8, facing(19, -8, 2, 6));
+model('building_well_blue', 2, 120, 7, 0, 9);
+box(-2, 120, 22, 2, 3, 2, palette.terracotta); // the postbox
+lamp(-5, 120, 20);
+lamp(9, 120, 2);
+clutter(-4, 120, 16, 8, 5);
+trees(0, 120, 0, 32, 10);
 
-export const spawn = { x: 0, y: 151.2, z: -31, yaw: 0 };
+// --- The gate: two towers to thread --------------------------------------------------------------
 
-// --- Market town: the safe route -------------------------------------------------------------
+{
+  const [x, y, z] = ringLine[0];
+  island(x, y - 20, z - 2, 30);
+  model('building_tower_B_red', x - 19, y - 20, z);
+  model('building_tower_B_yellow', x + 19, y - 20, z);
+  // A footbridge between them, under the ring.
+  box(x, y - 13, z, 22, 1.5, 5, palette.wood);
+  for (const side of [-1, 1]) box(x, y - 11.5, z + side * 2.3, 22, 1.2, 0.3, palette.timber, 0, false);
+  bunting([x - 11, y + 13, z], [x + 11, y + 13, z], 3);
+  model('building_home_A_green', x - 16, y - 20, z - 21, 0.4);
+  trees(x, y - 20, z - 2, 26, 7);
+}
 
-const market = { x: -90, top: 62, z: -300 };
-island(market.x, market.top, market.z, 58);
-house(market.x - 28, market.top, market.z + 14, 12, 9, 0.3, palette.wallPink, palette.teal, true);
-house(market.x + 26, market.top, market.z - 14, 12, 10, -0.2, palette.wall, palette.terracotta, true);
-house(market.x + 4, market.top, market.z + 26, 11, 8, 0.6, palette.wallBlue, palette.copper);
-house(market.x - 10, market.top, market.z - 34, 10, 8, -0.5, palette.wall, palette.moss);
-house(market.x + 32, market.top, market.z + 22, 10, 8, 1.0, palette.wallPink, palette.teal);
-house(market.x - 38, market.top, market.z - 14, 10, 9, 0.1, palette.wallBlue, palette.terracotta);
-// Clock tower in the paved square.
-cone(market.x, market.top, market.z - 2, 17, 17, 0.3, palette.stone, 16);
-cone(market.x, market.top, market.z - 4, 4.4, 4, 22, palette.stone, 4, Math.PI / 4);
-cone(market.x, market.top + 22, market.z - 4, 5.8, 0, 9, palette.teal, 4, Math.PI / 4);
-box(market.x, market.top + 15, market.z - 4 + 2.95, 2.6, 2.6, 0.4, palette.window, 0, false);
-// Market stalls.
-box(market.x + 9, market.top, market.z + 6, 5, 3, 3, palette.terracotta, 0.4);
-box(market.x - 10, market.top, market.z + 8, 5, 3, 3, palette.pad, -0.3);
-oak(market.x - 46, market.top, market.z + 8, 1.1);
-pine(market.x + 46, market.top, market.z + 2);
-oak(market.x + 10, market.top, market.z - 44, 1.2, palette.blossom);
-pine(market.x - 18, market.top, market.z + 44);
-bush(market.x + 18, market.top, market.z + 36);
-bush(market.x - 44, market.top, market.z - 30, 1.2);
-bush(market.x + 40, market.top, market.z - 30);
+// --- Chimney Lane: a street to fly down ----------------------------------------------------------
 
-// Warm air off the two chimneys.
-updrafts.push(
-  { x: market.x - 28, z: market.z + 14, base: market.top + 12, top: 215, radius: 30, strength: 16 },
-  { x: market.x + 26, z: market.z - 14, base: market.top + 12, top: 215, radius: 30, strength: 16 },
-);
+{
+  const [x, , z] = ringLine[1];
+  const ground = 90;
+  // Half the width of the street. The ring is 7 m across, so there is room, but not much.
+  const half = 10.5;
+  // The street runs along the ring line: (fx, fz) is a step along it, (-fz, fx) a step to the right.
+  const heading = facing(ringLine[0][0], ringLine[0][2], ringLine[2][0], ringLine[2][2]);
+  const fx = Math.sin(heading);
+  const fz = Math.cos(heading);
+  const at = (along: number, right: number) => [x + fx * along - fz * right, z + fz * along + fx * right];
 
-// --- Waterfall rock: the fast route ----------------------------------------------------------
+  const [cx, cz] = at(-6, 0);
+  island(cx, ground, cz, 50);
+  box(cx, ground, cz, half * 2, 0.25, 84, palette.stone, heading, false);
 
-const rock = { x: 112, top: 46, z: -385 };
-// The cliff face the ring line runs along, at x = cliffFace.
-export const cliffFace = rock.x - 28;
+  // Tall at the near end and low at the far end, because the line comes down as it goes.
+  const rows: [ModelName, ModelName][] = [
+    ['building_tower_B_yellow', 'building_tower_B_red'],
+    ['building_tower_A_blue', 'building_tower_A_green'],
+    ['building_church_red', 'building_tavern_blue'],
+    ['building_tavern_red', 'building_home_B_yellow'],
+    ['building_home_B_red', 'building_home_A_blue'],
+  ];
+  rows.forEach((row, i) => {
+    const along = -38 + i * 16;
+    const [mx, mz] = at(along, 0);
+    row.forEach((name, side) => {
+      const [bx, bz] = at(along, (side ? 1 : -1) * (half + reach(name)));
+      model(name, bx, ground, bz, facing(bx, bz, mx, mz));
+      const [lx, lz] = at(along + 8, (side ? 1 : -1) * (half - 1.5));
+      if (i < 4) lamp(lx, ground, lz);
+    });
+    const [px, pz] = at(along + 8, i % 2 ? 6 : -6);
+    if (i < 4) clutter(px, ground, pz, 4, 2);
+  });
+  const [ax, az] = at(-38, -half - 6);
+  const [bx, bz] = at(-38, half + 6);
+  bunting([ax, ground + 35, az], [bx, ground + 35, bz], 3);
+  trees(cx, ground, cz, 46, 16);
+}
+
+// A windmill out on its own marks the turn towards the cliff.
+hamlet(42, 84, -286, 14, ['building_windmill_red']);
+
+// --- Waterfall rock ------------------------------------------------------------------------------
+
 island(rock.x, rock.top, rock.z, 74);
 box(rock.x, rock.top, rock.z, 56, 108, 130, palette.cliff);
 box(rock.x, rock.top + 108, rock.z, 56, 2, 130, palette.grass);
@@ -240,64 +396,187 @@ meadow(rock.x, rock.top + 110, rock.z + 36, 26);
 // Buttresses on the far side, for the silhouette.
 box(rock.x + 30, rock.top, rock.z + 20, 22, 70, 40, palette.rock, 0.3);
 box(rock.x + 26, rock.top, rock.z - 44, 20, 46, 30, palette.rock, -0.4);
-// A peak at the far end breaks up the block.
+// A peak at the far end breaks up the block, with a windmill on top.
 box(rock.x + 8, rock.top + 110, rock.z - 30, 34, 26, 60, palette.cliff);
 box(rock.x + 8, rock.top + 136, rock.z - 30, 34, 2, 60, palette.grass);
-pine(rock.x + 8, rock.top + 138, rock.z - 34, 1.4);
-oak(rock.x - 10, rock.top + 110, rock.z + 30, 1.4);
-pine(rock.x + 14, rock.top + 110, rock.z + 48, 1.2);
-pine(rock.x - 18, rock.top + 110, rock.z - 48, 1.5);
-oak(rock.x - 50, rock.top, rock.z + 30, 1.2);
-pine(rock.x - 58, rock.top, rock.z - 20);
-bush(rock.x - 44, rock.top, rock.z + 6, 1.3);
+model('building_windmill_yellow', rock.x + 8, rock.top + 138, rock.z - 34, -Math.PI / 2);
 // The waterfall pours down the far end of the face into a pool. You can fly through the water.
-box(cliffFace - 0.6, rock.top, rock.z - 48, 1.2, 108, 16, palette.water, 0, false);
-cone(cliffFace - 9, rock.top, rock.z - 48, 11, 11, 0.6, palette.water, 14);
-
+box(cliffFace - 0.6, rock.top, rock.z - 54, 1.2, 108, 16, palette.water, 0, false);
+cone(cliffFace - 7, rock.top, rock.z - 54, 9, 9, 0.6, palette.water, 14);
 // Mist rising off the pool.
 updrafts.push({ x: cliffFace - 14, z: rock.z - 75, base: rock.top + 4, top: 150, radius: 24, strength: 22 });
 
+// A village on top, and houses on ledges down the near end.
+{
+  const top = rock.top + 110;
+  model('building_church_blue', rock.x + 6, top, rock.z + 35, -Math.PI / 2);
+  model('building_home_A_red', rock.x - 8, top, rock.z + 47, -Math.PI / 2);
+  model('building_home_B_green', rock.x + 14, top, rock.z + 13, -Math.PI / 2);
+  model('building_home_A_yellow', rock.x - 18, top, rock.z - 37, -Math.PI / 2);
+  trees(rock.x, top, rock.z + 33, 26, 9);
+
+  island(rock.x + 8, 100, rock.z + 75, 20, false);
+  model('building_tavern_blue', rock.x + 8, 100, rock.z + 73);
+  trees(rock.x + 8, 100, rock.z + 75, 17, 4);
+  island(rock.x - 16, 78, rock.z + 79, 14, false);
+  model('building_home_A_blue', rock.x - 14, 78, rock.z + 79, -0.5);
+}
+
+// --- The tunnel: an arch of rock against the cliff ---------------------------------------------
+
+const terrace = rock.top + 22;
+{
+  const z = -342;
+  const length = 48;
+  // A foot of rock under the mouth, a pier on the left and a roof leaning on the cliff.
+  box(68, rock.top, z + 8, 44, 22.05, 32, palette.cliff);
+  box(54, terrace, z, 16, 28, length, palette.cliff);
+  box(68, terrace + 28, z, 44, 14, length, palette.cliff);
+  box(68, terrace + 42, z, 44, 2, length, palette.grass);
+  meadow(68, terrace + 44, z, 20);
+  model('building_home_B_red', 60, terrace + 44, z + 2, 0.3);
+  trees(68, terrace + 44, z, 19, 6);
+  // Lanterns down both walls.
+  for (const lz of [z - 16, z, z + 16]) for (const lx of [62.3, cliffFace - 0.3]) ball(lx, terrace + 20, lz, 1, palette.lamp, false);
+}
+
+// --- The terrace market: stalls on the left, cliff on the right --------------------------------
+
+island(56, terrace, -378, 56, false);
+box(66, terrace, -394, 34, 0.25, 64, palette.stone, 0, false);
+{
+  const line = cliffFace - 10;
+  const west = Math.PI / 2; // turned to face the cliff
+  model('building_market_yellow', 58, terrace, -376, west, 10);
+  model('building_well_blue', 58, terrace, -393, west, 9);
+  model('building_market_green', 58, terrace, -410, west, 10);
+  model('tent', 60, terrace, -427, west);
+  // A row of buildings behind the stalls, and another behind that.
+  model('building_home_B_yellow', 40, terrace, -374, west);
+  model('building_tower_A_blue', 40, terrace, -390, west);
+  model('building_tavern_red', 40, terrace, -407, west);
+  model('building_home_A_red', 40, terrace, -423, west);
+  model('building_church_red', 21, terrace, -376, west);
+  model('building_home_A_green', 23, terrace, -394, west);
+  model('building_home_B_blue', 25, terrace, -409, west);
+  model('building_home_B_green', 30, terrace, -348, west);
+  model('building_blacksmith_green', 14, terrace, -355, 2.2);
+
+  // Awnings against the cliff, with goods stacked underneath.
+  [-378, -396].forEach((z, i) => {
+    box(cliffFace - 2, terrace + 4.4, z, 4, 0.6, 10, i ? palette.teal : palette.terracotta);
+    for (const end of [-4.5, 4.5]) cone(cliffFace - 3.7, terrace, z + end, 0.2, 0.2, 4.4, palette.timber, 6, 0, false);
+    model(i ? 'crate_A_big' : 'barrel', cliffFace - 2.4, terrace, z - 2.5, 0.3);
+    model(i ? 'sack' : 'crate_B_big', cliffFace - 2.4, terrace, z + 2.5, 1.1);
+  });
+  for (const z of [-366, -385, -402, -419]) lamp(line - 8.5, terrace, z);
+  clutter(54, terrace, -393, 9, 6);
+  clutter(52, terrace, -428, 5, 3);
+  bunting([44, terrace + 29, -390], [cliffFace, terrace + 29, -390], 3);
+  bunting([46, terrace + 19, -407], [cliffFace, terrace + 23, -407], 2);
+  bunting([62, terrace + 27, -367], [cliffFace, terrace + 27, -367], 2);
+  trees(40, terrace, -378, 38, 14);
+}
+
+// --- The viaduct ---------------------------------------------------------------------------------
+
+{
+  const [x, y, z] = ringLine[5];
+  island(x - 22, y - 10, z, 16);
+  island(x + 22, y - 10, z, 16);
+  model('building_tower_A_green', x - 26, y - 10, z);
+  model('building_tower_A_blue', x + 26, y - 10, z);
+  // You fly under the deck.
+  box(x, y + 10, z, 38, 3, 6, palette.stone);
+  for (const side of [-1, 1]) {
+    box(x + side * 15, y + 4, z, 8, 6, 6, palette.stone);
+    box(x, y + 13, z + side * 2.8, 38, 1.2, 0.4, palette.stone, 0, false);
+    lamp(x + side * 9, y + 13, z);
+    trees(x + side * 22, y - 10, z, 13, 4);
+  }
+}
+
+// --- The windmill gap ------------------------------------------------------------------------------
+
+{
+  const [x, y, z] = ringLine[6];
+  island(x, y - 12, z - 5, 28);
+  model('building_windmill_red', x - 19, y - 12, z);
+  model('building_windmill_yellow', x + 19, y - 12, z);
+  model('building_home_A_yellow', x + 12, y - 12, z - 20, 0.5);
+  trees(x, y - 12, z - 5, 24, 7);
+}
+
+// --- Market town: the safe route -------------------------------------------------------------
+
+island(market.x, market.top, market.z, 58);
+cone(market.x, market.top, market.z, 21, 21, 0.3, palette.stone, 20);
+model('building_well_blue', market.x, market.top + 0.3, market.z, 0, 10);
+model('building_market_yellow', market.x - 13, market.top + 0.3, market.z, Math.PI / 2, 10);
+model('building_market_green', market.x + 13, market.top + 0.3, market.z, -Math.PI / 2, 10);
+model('tent', market.x + 2, market.top + 0.3, market.z + 14, 0.4);
+model('tent', market.x - 3, market.top + 0.3, market.z - 14, 2.8);
+clutter(market.x, market.top + 0.3, market.z, 19, 12);
+{
+  // Two rings of buildings facing the square. The taverns stand under the updrafts.
+  const ring = (names: ModelName[], out: number, offset: number) =>
+    names.map((name, i) => {
+      const angle = 0.494 + ((i + offset) * Math.PI) / 4;
+      const pos = [market.x + Math.sin(angle) * out, market.z + Math.cos(angle) * out];
+      model(name, pos[0], market.top, pos[1], angle + Math.PI);
+      return pos;
+    });
+  const inner = ring(
+    ['building_home_B_red', 'building_home_A_yellow', 'building_tavern_red', 'building_church_blue', 'building_home_B_green', 'building_blacksmith_green', 'building_tavern_blue', 'building_home_A_red'],
+    33,
+    0,
+  );
+  ring(
+    ['building_tower_B_red', 'building_home_A_blue', 'building_home_B_yellow', 'building_windmill_yellow', 'building_home_A_green', 'building_tower_A_green', 'building_home_B_blue', 'building_home_A_yellow'],
+    47,
+    0.5,
+  );
+  // Warm air off the two tavern chimneys.
+  for (const [x, z] of [inner[6], inner[2]]) {
+    smoke(x, market.top + 22, z);
+    updrafts.push({ x, z, base: market.top + 12, top: 215, radius: 30, strength: 16 });
+  }
+  for (let i = 0; i < 8; i++) lamp(market.x + Math.sin((i * Math.PI) / 4) * 22, market.top, market.z + Math.cos((i * Math.PI) / 4) * 22);
+}
+trees(market.x, market.top, market.z, 54, 18);
+
 // --- Lighthouse: the destination -------------------------------------------------------------
 
-const light = { x: 20, top: 96, z: -775 };
 island(light.x, light.top, light.z, 36);
 cone(light.x + 20, light.top, light.z - 17, 5.5, 4, 40, palette.stone, 14);
 cone(light.x + 20, light.top + 13, light.z - 17, 5.2, 5, 6, palette.terracotta, 14);
 cone(light.x + 20, light.top + 40, light.z - 17, 5.6, 5.6, 1.2, palette.wood, 14);
 cone(light.x + 20, light.top + 41.2, light.z - 17, 3, 3, 5, palette.lamp, 10);
 cone(light.x + 20, light.top + 46.2, light.z - 17, 4.2, 0, 4.5, palette.terracotta, 14);
-house(light.x - 16, light.top, light.z - 18, 11, 8, 0.4, palette.wall, palette.teal, true);
-oak(light.x - 26, light.top, light.z + 2);
-pine(light.x + 26, light.top, light.z + 8, 1.2);
-bush(light.x + 8, light.top, light.z + 6);
-
-export const pad = { x: light.x - 12, y: light.top + 2, z: light.z + 20, radius: 10 };
 cone(pad.x, light.top, pad.z, pad.radius, pad.radius, 2, palette.pad, 20);
+model('building_home_B_red', light.x - 14, light.top, light.z - 20, 0.2);
+model('building_home_A_blue', light.x + 3, light.top, light.z - 26);
+model('building_home_A_yellow', light.x - 27, light.top, light.z - 4, 0.9);
+clutter(light.x + 6, light.top, light.z + 2, 7, 4);
+trees(light.x, light.top, light.z, 32, 9);
 
-// --- Ring line -------------------------------------------------------------------------------
+// --- Hamlets drifting round the edges, so the sky is never empty -------------------------------
 
-const ringLine: Vec3[] = [
-  [22, 132, -110],
-  [48, 108, -200],
-  [70, 90, -290],
-  [cliffFace - 10, 80, -360],
-  [cliffFace - 10, 78, -420],
-  [62, 100, -520],
-  [40, 112, -620],
-];
-
-// Each ring faces along the line from the ring before it to the ring after it.
-export const rings: Ring[] = ringLine.map((pos, i) => {
-  const from = ringLine[i - 1] ?? [spawn.x, spawn.y, spawn.z];
-  const to = ringLine[i + 1] ?? [pad.x, pad.y, pad.z];
-  const d = [to[0] - from[0], to[1] - from[1], to[2] - from[2]];
-  const len = Math.hypot(d[0], d[1], d[2]);
-  return { pos, normal: [d[0] / len, d[1] / len, d[2] / len] };
-});
+hamlet(-70, 100, -120, 20, ['building_home_A_red', 'building_home_B_yellow', 'building_home_A_blue']);
+hamlet(122, 118, -165, 18, ['building_tower_A_blue', 'building_home_A_red']);
+hamlet(-10, 84, -250, 16, ['building_windmill_yellow']);
+hamlet(-150, 90, -420, 22, ['building_church_red', 'building_home_B_green', 'building_home_A_yellow']);
+hamlet(-20, 70, -480, 22, ['building_tavern_blue', 'building_home_A_green', 'building_home_B_red']);
+hamlet(28, 92, -470, 13, ['building_home_B_yellow']);
+hamlet(102, 86, -488, 13, ['building_home_A_red']);
+hamlet(130, 90, -560, 20, ['building_tower_B_yellow', 'building_home_A_blue']);
+hamlet(14, 100, -572, 14, ['building_home_B_green']);
+hamlet(84, 106, -588, 13, ['building_home_A_yellow']);
+hamlet(-60, 110, -650, 18, ['building_church_blue', 'building_home_A_red']);
+hamlet(-14, 104, -690, 14, ['building_home_B_blue']);
+hamlet(90, 104, -700, 16, ['building_windmill_red']);
 
 // --- Queries ---------------------------------------------------------------------------------
-
-const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
 function boxDistance(px: number, py: number, pz: number, hx: number, hy: number, hz: number) {
   const qx = Math.abs(px) - hx;
@@ -320,21 +599,6 @@ function coneDistance(px: number, py: number, pz: number, halfH: number, rBottom
   const sign = sideX < 0 && capY < 0 ? -1 : 1;
   return sign * Math.sqrt(Math.min(capX * capX + capY * capY, sideX * sideX + sideY * sideY));
 }
-
-const solids = prims
-  .filter((p) => p.solid !== false)
-  .map((p) => ({
-    prim: p,
-    // Radius of a sphere around pos that contains the whole shape, for cheap rejection.
-    bound:
-      p.kind === 'box'
-        ? Math.hypot(...p.size) / 2
-        : p.kind === 'cone'
-          ? Math.hypot(Math.max(p.rTop, p.rBottom), p.height / 2)
-          : p.radius,
-    sin: Math.sin(p.rotY ?? 0),
-    cos: Math.cos(p.rotY ?? 0),
-  }));
 
 /** Distance from a point to the nearest solid surface. Negative inside. */
 export function distanceToWorld(x: number, y: number, z: number): number {
