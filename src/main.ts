@@ -130,5 +130,14 @@ function frame(now: number) {
   requestAnimationFrame(frame);
 }
 
-onDeck();
-requestAnimationFrame(frame);
+hud.message('Loading…');
+scene.loaded.then(
+  () => {
+    // Forget any key pressed while loading, so the flight does not start by itself.
+    input.takeLaunch();
+    last = performance.now();
+    onDeck();
+    requestAnimationFrame(frame);
+  },
+  () => hud.message('Could not load the models. Try reloading.'),
+);
