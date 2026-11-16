@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { config } from './config';
-import { islands, pad, palette, placements, prims, rings, seeded, updrafts, type Prim } from './world';
+import { islands, pad, palette, peaks, placements, prims, rings, seeded, updrafts, type Prim } from './world';
 
 // Everything you can see. Builds meshes from the level's primitives and models, and owns the
 // renderer.
@@ -53,6 +53,25 @@ inkMaterial.onBeforeCompile = (shader) => {
      vec3 transformed = position + normal * clamp(inkDepth, 4.0, 600.0) * 0.004;`,
   );
 };
+
+// Mist lies in the valley. Besides thickening with distance, the air is thicker low down, so
+// the feet of far mountains dissolve into it while their peaks stand clear.
+const MIST = { top: 260, near: 150, far: 800, strength: 0.9 };
+const float = (n: number) => n.toFixed(1);
+THREE.ShaderChunk.fog_pars_vertex += '\n#ifdef USE_FOG\n varying float vFogHeight;\n#endif\n';
+THREE.ShaderChunk.fog_pars_fragment += '\n#ifdef USE_FOG\n varying float vFogHeight;\n#endif\n';
+THREE.ShaderChunk.fog_vertex += `
+#ifdef USE_FOG
+  // Height in the world, recovered from the position relative to the camera.
+  vFogHeight = cameraPosition.y + dot(viewMatrix[1].xyz, mvPosition.xyz);
+#endif
+`;
+THREE.ShaderChunk.fog_fragment = THREE.ShaderChunk.fog_fragment.replace(
+  'gl_FragColor.rgb = mix',
+  `float mist = (1.0 - smoothstep(${float(config.world.cloudLevel)}, ${float(MIST.top)}, vFogHeight)) * smoothstep(${float(MIST.near)}, ${float(MIST.far)}, vFogDepth);
+	fogFactor = max(fogFactor, mist * ${MIST.strength});
+	gl_FragColor.rgb = mix`,
+);
 
 /**
  * Chips the sides of a rock inwards so it reads as stone, not as a box. Vertices only ever move
@@ -160,6 +179,60 @@ function build(list: Prim[]) {
   add(water, waterMaterial, false);
   add(ink, inkMaterial, false);
   return group;
+}
+
+/** The mountains: each solid cone carved into ridges, with forest at the foot and snow on top. */
+function buildMountains() {
+  const paint: THREE.BufferGeometry[] = [];
+  const ink: THREE.BufferGeometry[] = [];
+  const forest = new THREE.Color('#6aa58c');
+  const rock = new THREE.Color('#b3a2b8');
+  const snow = new THREE.Color('#ffffff');
+  const radial = 30;
+  for (const peak of peaks) {
+    const [px, py, pz] = peak.pos;
+    const cone = new THREE.CylinderGeometry(0, peak.rBottom, peak.height, radial, 18, true);
+    // Broad buttresses round the mountain, different for each one.
+    const turn = noise(px, 0, pz) * 6.28;
+    const buttress = (column: number) => {
+      const angle = (column / radial) * Math.PI * 2;
+      return 0.5 + 0.25 * Math.sin(angle * 3 + turn) + 0.25 * Math.sin(angle * 7 + turn * 3);
+    };
+    const position = cone.attributes.position;
+    for (let i = 0; i < position.count; i++) {
+      const y = position.getY(i);
+      // Buttresses and gullies run down the cone, deeper towards the foot. Rock only
+      // ever moves inwards, so the peak you see is never bigger than the cone you hit.
+      const rough = noise(position.getX(i) + px, y, position.getZ(i) + pz);
+      const squeeze = 1 - (0.22 * buttress(i % (radial + 1)) + 0.07 * rough) * (0.4 + 0.6 * (0.5 - y / peak.height));
+      position.setXYZ(i, position.getX(i) * squeeze, y, position.getZ(i) * squeeze);
+    }
+    const faces = cone.toNonIndexed();
+    faces.deleteAttribute('uv');
+    faces.computeVertexNormals();
+
+    const at = faces.attributes.position;
+    const colors = new Float32Array(at.count * 3);
+    const away = new Float32Array(at.count * 3);
+    for (let i = 0; i < at.count; i += 3) {
+      const y = py + (at.getY(i) + at.getY(i + 1) + at.getY(i + 2)) / 3;
+      const speckle = noise(at.getX(i) + at.getX(i + 1), y, at.getZ(i) + at.getZ(i + 2));
+      const color = y > 300 + speckle * 70 ? snow : y < 30 + speckle * 60 ? forest : rock;
+      const shade = 0.92 + 0.12 * speckle;
+      for (let v = i; v < i + 3; v++) {
+        colors.set([color.r * shade, color.g * shade, color.b * shade], v * 3);
+        const r = Math.hypot(at.getX(v), at.getZ(v)) || 1;
+        away.set([at.getX(v) / r, 0.3, at.getZ(v) / r], v * 3);
+      }
+    }
+    faces.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    const outline = new THREE.BufferGeometry();
+    outline.setAttribute('position', at.clone());
+    outline.setAttribute('normal', new THREE.BufferAttribute(away, 3));
+    paint.push(faces.translate(px, py, pz));
+    ink.push(outline.translate(px, py, pz));
+  }
+  return new THREE.Group().add(new THREE.Mesh(mergeGeometries(paint), paintMaterial), new THREE.Mesh(mergeGeometries(ink), inkMaterial));
 }
 
 // --- Imported models -----------------------------------------------------------------------------
@@ -389,11 +462,12 @@ function buildClouds() {
 
   // A broken layer of low cloud with the land showing through the gaps. The tops are at the
   // height where the game calls you lost.
-  for (let i = 0; i < 85; i++) {
+  for (let i = 0; i < 110; i++) {
     const angle = random() * Math.PI * 2;
-    const reach = Math.sqrt(random()) * 1700;
+    const reach = Math.sqrt(random());
     const size = 40 + random() * 60;
-    heap(near, LEVEL_CENTRE.x + Math.cos(angle) * reach, config.world.cloudLevel - size * 0.2, LEVEL_CENTRE.z + Math.sin(angle) * reach, size, 0.2);
+    // Spread over the valley floor, out to the feet of the mountains.
+    heap(near, LEVEL_CENTRE.x + Math.cos(angle) * reach * 620, config.world.cloudLevel - size * 0.2, LEVEL_CENTRE.z + Math.sin(angle) * reach * 820, size, 0.2);
   }
 
   // Each island rides on a wreath of cloud. You can fly through it, but there is rock inside.
@@ -575,7 +649,7 @@ export function createScene(canvas: HTMLCanvasElement) {
   renderer.shadowMap.enabled = true;
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(SKY.horizon, 600, 2900);
+  scene.fog = new THREE.Fog(SKY.horizon, 250, 3000);
   const camera = new THREE.PerspectiveCamera(config.camera.baseFov, 1, 0.5, 4000);
 
   // The sky light is what shade is painted with, so it is strong and blue.
@@ -596,7 +670,7 @@ export function createScene(canvas: HTMLCanvasElement) {
   const ringMeshes = buildRings();
   const updraftMotes = buildUpdrafts();
   let animateCourier = (_time: number) => {};
-  scene.add(sky, buildLand(), buildClouds(), buildBeacon(), glider, updraftMotes.points, ...ringMeshes, build(prims.filter((p) => !p.hidden)));
+  scene.add(sky, buildLand(), buildClouds(), buildMountains(), buildBeacon(), glider, updraftMotes.points, ...ringMeshes, build(prims.filter((p) => !p.hidden)));
 
   const resize = () => {
     renderer.setSize(innerWidth, innerHeight, false);
