@@ -2,6 +2,9 @@
 
 export function createAudio() {
   let ctx: AudioContext | null = null;
+  // Everything goes out through one volume knob.
+  let master: GainNode;
+  let level = 1;
   let windGain: GainNode;
   let windTone: BiquadFilterNode;
 
@@ -16,7 +19,7 @@ export function createAudio() {
     osc.frequency.exponentialRampToValueAtTime(to, start + seconds);
     gain.gain.setValueAtTime(volume, start);
     gain.gain.exponentialRampToValueAtTime(0.001, start + seconds);
-    osc.connect(gain).connect(ctx.destination);
+    osc.connect(gain).connect(master);
     osc.start(start);
     osc.stop(start + seconds);
   }
@@ -26,6 +29,9 @@ export function createAudio() {
     start() {
       if (ctx) return;
       ctx = new AudioContext();
+      master = ctx.createGain();
+      master.gain.value = level;
+      master.connect(ctx.destination);
 
       // Wind is looped white noise through a low-pass filter that opens up with speed.
       const noise = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
@@ -39,8 +45,14 @@ export function createAudio() {
       windTone.type = 'lowpass';
       windGain = ctx.createGain();
       windGain.gain.value = 0;
-      source.connect(windTone).connect(windGain).connect(ctx.destination);
+      source.connect(windTone).connect(windGain).connect(master);
       source.start();
+    },
+
+    /** 0 is silent, 1 is full. */
+    volume(to: number) {
+      level = to;
+      if (ctx) master.gain.value = to;
     },
 
     wind(speed: number, boosting: boolean) {
