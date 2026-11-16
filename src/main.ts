@@ -7,10 +7,12 @@ import { createHud } from './hud';
 import { createInput } from './input';
 import { levels, loadLevel, type Level } from './levels';
 import { createScene } from './scene';
+import { letters } from './world';
 
 // Wires the rules to the screen, speakers and controls, and runs the frame loop.
 
 const BEST_KEY = 'glidepost.best';
+const LETTERS_KEY = 'glidepost.letters';
 const MAX_STEP = 1 / 120;
 const ready = () => `<strong>${level.name}</strong>${level.blurb}
 W / S dive and pull up · A / D turn
@@ -29,6 +31,9 @@ let level = levels[0];
 let loading = true;
 const briefed = new Set<Level>();
 let best: number | null = null;
+// A line shown for a few seconds in flight, and the time on the clock when it goes away.
+let notice = '';
+let noticeUntil = 0;
 
 // Browsers only allow sound once the player has pressed something.
 addEventListener('keydown', () => audio.start());
@@ -82,6 +87,9 @@ async function choose(next: Level) {
   hud.message('Loading…');
   loadLevel(level);
   reset(game);
+  // Letters stay found: each route remembers which, as a row of 1s and 0s.
+  const kept = localStorage.getItem(`${LETTERS_KEY}.${level.id}`) ?? '';
+  game.found = letters.map((_, i) => kept[i] === '1');
   // Times from before there was more than one route belong to the first.
   best = Number(localStorage.getItem(`${BEST_KEY}.${level.id}`) ?? (level === levels[0] ? localStorage.getItem(BEST_KEY) : null)) || null;
   hud.destination(level.destination);
@@ -102,9 +110,18 @@ addEventListener('keydown', (event) => {
   if (picked && picked !== level && !loading && (game.phase === 'ready' || game.phase === 'landed')) choose(picked);
 });
 
+const carried = () => game.found.filter(Boolean).length;
+
 function handle(event: GameEvent) {
   if (event.type === 'ring') {
     audio.ring(event.chain);
+  } else if (event.type === 'bell') {
+    audio.bell();
+  } else if (event.type === 'letter') {
+    audio.letter();
+    localStorage.setItem(`${LETTERS_KEY}.${level.id}`, game.found.map(Number).join(''));
+    notice = `Lost letter found · ${carried()} of ${letters.length}`;
+    noticeUntil = performance.now() + 3000;
   } else if (event.type === 'landed') {
     const newBest = !best || game.time < best;
     if (newBest) {
@@ -112,10 +129,10 @@ function handle(event: GameEvent) {
       localStorage.setItem(`${BEST_KEY}.${level.id}`, String(best));
     }
     audio.land(event.perfect);
-    const notes = [`${game.time.toFixed(2)} s`, event.perfect && 'Perfect landing', newBest && 'New best!'];
+    const notes = [`${game.time.toFixed(2)} s`, event.perfect && 'Perfect landing', newBest && 'New best!', `Lost letters ${carried()} of ${letters.length}`];
     const result = `<strong>Delivered!</strong>${notes.filter(Boolean).join(' · ')}\nPress R to fly again`;
     hud.message('');
-    dialogue.play(level.thanks(game.time, event.perfect), () => hud.message(result));
+    dialogue.play(level.thanks(game.time, event.perfect, carried()), () => hud.message(result));
   } else if (event.type === 'crashed') {
     audio.crash();
     hud.message(
@@ -161,7 +178,7 @@ function frame(now: number) {
 
   const g = game.glider;
   if (game.phase === 'flying') {
-    hud.message(g.speed < config.flight.stallSpeed * 1.15 ? 'Stalling! Dive to pick up speed' : '');
+    hud.message(g.speed < config.flight.stallSpeed * 1.15 ? 'Stalling! Dive to pick up speed' : now < noticeUntil ? notice : '');
   }
   hud.update(game, best);
   dialogue.update(dt);
@@ -170,6 +187,7 @@ function frame(now: number) {
   scene.glider.rotation.set(g.pitch, g.yaw, g.roll, 'YXZ');
   scene.glider.visible = game.phase !== 'crashed';
   game.ringsHit.forEach((hit, i) => scene.setRingHit(i, hit));
+  game.found.forEach((found, i) => scene.setLetterFound(i, found));
   updateCamera(dt);
   audio.wind(game.phase === 'flying' ? g.speed : 0, game.boosting);
   scene.render(now / 1000);

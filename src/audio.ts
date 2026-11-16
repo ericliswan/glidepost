@@ -61,6 +61,19 @@ export function createAudio() {
       tone(pitch, pitch * 2, 0.22);
     },
 
+    /** A lost letter, picked up. */
+    letter() {
+      [880, 1109, 1319, 1760].forEach((pitch, i) => tone(pitch, pitch, 0.3, 'triangle', 0.12, i * 0.07));
+    },
+
+    /** A church bell: a strike, a hum under it and overtones that are not quite in tune. */
+    bell() {
+      const note = 392;
+      [[0.5, 2.4, 0.1], [1, 2, 0.16], [2, 1.4, 0.1], [2.76, 0.9, 0.06], [5.4, 0.4, 0.04]].forEach(([part, seconds, volume]) =>
+        tone(note * part, note * part, seconds, 'sine', volume),
+      );
+    },
+
     land(perfect: boolean) {
       tone(523, 523, 0.25);
       tone(659, 659, 0.25, 'sine', 0.18, 0.12);
