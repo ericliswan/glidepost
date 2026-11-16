@@ -15,11 +15,17 @@ export function createInput(canvas: HTMLCanvasElement) {
   const stick = { turn: 0, pitch: 0 };
   let launchQueued = false;
   let restartQueued = false;
+  /** Set from the settings form. */
+  const options = { sensitivity: 1, invert: false };
 
   const held = (...codes: string[]) => codes.some((code) => keys.has(code));
 
   addEventListener('keydown', (e) => {
-    if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
+    if (e.code === 'Space' || e.code.startsWith('Arrow')) {
+      // On a button or a slider these keys belong to it, not to the glider.
+      if ((e.target as Element).closest('button, input')) return;
+      e.preventDefault();
+    }
     if (e.repeat) return;
     keys.add(e.code);
     if (e.code === 'Space') launchQueued = true;
@@ -47,12 +53,14 @@ export function createInput(canvas: HTMLCanvasElement) {
 
   addEventListener('mousemove', (e) => {
     if (document.pointerLockElement !== canvas) return;
-    const { sensitivity, aimLimit } = config.mouse;
+    const { aimLimit } = config.mouse;
+    const sensitivity = config.mouse.sensitivity * options.sensitivity;
     aim.turn = clamp(aim.turn + e.movementX * sensitivity, -aimLimit, aimLimit);
-    aim.pitch = clamp(aim.pitch - e.movementY * sensitivity, -aimLimit, aimLimit);
+    aim.pitch = clamp(aim.pitch - e.movementY * sensitivity * (options.invert ? -1 : 1), -aimLimit, aimLimit);
   });
 
   return {
+    options,
     /** True once per launch press (Space or click). */
     takeLaunch() {
       const queued = launchQueued;
@@ -74,7 +82,7 @@ export function createInput(canvas: HTMLCanvasElement) {
       const { turnRate, pitchRate } = config.flight;
       const ease = Math.min(1, 12 * dt);
       const keyTurn = Number(held('KeyD', 'ArrowRight')) - Number(held('KeyA', 'ArrowLeft'));
-      const keyPitch = Number(held('KeyS', 'ArrowDown')) - Number(held('KeyW', 'ArrowUp'));
+      const keyPitch = (Number(held('KeyS', 'ArrowDown')) - Number(held('KeyW', 'ArrowUp'))) * (options.invert ? -1 : 1);
       stick.turn += (keyTurn - stick.turn) * ease;
       stick.pitch += (keyPitch - stick.pitch) * ease;
 
