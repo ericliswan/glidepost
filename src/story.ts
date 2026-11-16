@@ -14,6 +14,9 @@ export interface Line {
 
 const say = (who: Line['who'], ...texts: string[]): Line[] => texts.map((text) => ({ who, text }));
 
+/** How many letters are lost on every route. */
+export const LETTERS = 3;
+
 /** A run this quick, in seconds, must have gone through the town and not round by the chimneys. */
 const QUICK = 30;
 
@@ -24,10 +27,11 @@ const valleyBriefing = say(
   'Marigold has asked after it every day this week, so no dawdling. Follow the beam of light and you cannot miss the place.',
   'Running low? The market chimneys will lift you back up. Or take the rings straight through town, if you have the nerve.',
   'And land gently, on the gold pad. The last courier bounced a parcel clean off the island.',
+  'Oh, and three letters went astray on this round, years back. They say one never got further than the back of this very post office. Keep your eyes open.',
 );
 
 /** The lighthouse keeper, once the parcel is on the pad. */
-function valleyThanks(time: number, perfect: boolean): Line[] {
+function valleyThanks(time: number, perfect: boolean, letters: number): Line[] {
   const seconds = time.toFixed(1);
   return say(
     'keeper',
@@ -38,6 +42,9 @@ function valleyThanks(time: number, perfect: boolean): Line[] {
     time < QUICK
       ? `${seconds} seconds from the post office? You must have come straight through the middle of town!`
       : `${seconds} seconds, by my clock. You took the scenic way round, over the chimneys, did you not?`,
+    ...(letters === LETTERS
+      ? ['And what is this? All three of the lost letters! One of them is mine. I wrote it to my sister eleven years ago.']
+      : []),
     'Thank you, courier. Tell Orso the lamp oil arrived, and that I said hello.',
   );
 }
@@ -54,10 +61,11 @@ const gorgeBriefing = say(
   'Thread the Needles, then drop into the canyon and keep under the bridges. That is the fast way, if you dare.',
   'Or climb the warm air off the baker\'s chimney in the Needles and stay high over the rim. Slower, but there is less to hit.',
   'The gold pad is in the keep courtyard. Come in soft. Bram counts every crumb.',
+  'Three letters were lost down there too. The old couriers swore by a hollow rock east of the Needles, with a wind in it. I never found it myself.',
 );
 
 /** The warden of the keep, once the cake is on the pad. */
-function gorgeThanks(time: number, perfect: boolean): Line[] {
+function gorgeThanks(time: number, perfect: boolean, letters: number): Line[] {
   const seconds = time.toFixed(1);
   return say(
     'warden',
@@ -68,6 +76,9 @@ function gorgeThanks(time: number, perfect: boolean): Line[] {
     time < QUICK_GORGE
       ? `${seconds} seconds from the post office! You came through the canyon, did you not? I heard the bridges whistle.`
       : `${seconds} seconds. The long way, over the rim. Sensible. Slow, but sensible.`,
+    ...(letters === LETTERS
+      ? ['Wait. Are those the three lost letters of the gorge? The watch has had a reward posted for those since before my time. It is a second cake. You have earned it.']
+      : []),
     'My thanks. Tell Orso the watch eats well tonight. I may even share.',
   );
 }

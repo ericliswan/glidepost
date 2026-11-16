@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { config } from './config';
 import type { Level } from './levels';
-import { islands, pad, palette, peaks, placements, prims, rings, seeded, updrafts, type Prim } from './world';
+import { islands, letters, pad, palette, peaks, placements, prims, rings, seeded, streams, updrafts, type Prim } from './world';
 
 // Everything you can see. Builds meshes from the level's primitives and models, and owns the
 // renderer.
@@ -624,6 +624,80 @@ function buildUpdrafts() {
   return { points, animate };
 }
 
+/** Motes blown along each stream, so the wind can be seen and followed. */
+function buildStreams() {
+  const perStream = 150;
+  const random = seeded(9);
+  const up = new THREE.Vector3(0, 1, 0);
+  const motes = streams.flatMap((s) => {
+    const from = new THREE.Vector3(...s.from);
+    const along = new THREE.Vector3(...s.to).sub(from);
+    const side = new THREE.Vector3().crossVectors(along, up).normalize();
+    const over = new THREE.Vector3().crossVectors(side, along).normalize();
+    return Array.from({ length: perStream }, () => ({ s, from, along, side, over, angle: random() * Math.PI * 2, reach: Math.sqrt(random()) * 0.6, phase: random() }));
+  });
+  const positions = new Float32Array(motes.length * 3);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const points = new THREE.Points(
+    geometry,
+    new THREE.PointsMaterial({ color: '#e4f6ff', map: (dot ??= dotTexture()), size: 2.4, transparent: true, opacity: 0.85, depthWrite: false, fog: false }),
+  );
+  points.frustumCulled = false;
+
+  const at = new THREE.Vector3();
+  const animate = (time: number) => {
+    motes.forEach((m, i) => {
+      const gone = (m.phase + (time * m.s.speed) / m.along.length()) % 1;
+      const angle = m.angle + gone * 5;
+      at.copy(m.from)
+        .addScaledVector(m.along, gone)
+        .addScaledVector(m.side, Math.cos(angle) * m.reach * m.s.radius)
+        .addScaledVector(m.over, Math.sin(angle) * m.reach * m.s.radius)
+        .toArray(positions, i * 3);
+    });
+    geometry.attributes.position.needsUpdate = true;
+  };
+  return { points, animate };
+}
+
+/** The lost letters: an envelope with a wax seal, turning in a little light of its own. */
+function buildLetters() {
+  const part = (w: number, h: number, d: number, z: number, color: string): Prim => ({ kind: 'box', pos: [0, 0, z], size: [w, h, d], color });
+  return letters.map((pos) => {
+    const letter = build([part(3.4, 2.2, 0.3, 0, palette.window), part(0.7, 0.7, 0.5, 0, '#d8442f'), part(3.4, 0.3, 0.36, 0, '#d8442f')]);
+    const halo = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: (dot ??= dotTexture()), color: '#ffe9a8', transparent: true, opacity: 0.55, depthWrite: false, fog: false }),
+    );
+    halo.scale.setScalar(11);
+    letter.add(halo);
+    letter.position.set(...pos);
+    return letter;
+  });
+}
+
+/** Something very large and very slow that lives above the mountains. Nobody has explained it. */
+function buildWhale() {
+  const blue = '#6f8fb5';
+  const ball = (x: number, y: number, z: number, radius: number, color: string): Prim => ({ kind: 'sphere', pos: [x, y, z], radius, color });
+  const slab = (x: number, y: number, z: number, w: number, h: number, d: number, color: string, rotY = 0): Prim => ({ kind: 'box', pos: [x, y, z], size: [w, h, d], color, rotY });
+  // Round things, stretched into the shape of a whale. The nose points down -Z.
+  const body = build([ball(0, 0, 0, 30, blue), ball(0, -5, -2, 27, '#f3e7d3'), ball(0, 3, 27, 13, blue)]);
+  body.scale.set(1, 0.62, 2.3);
+  const whale = build([
+    slab(-15, 2, 104, 30, 3, 16, blue, 0.5),
+    slab(15, 2, 104, 30, 3, 16, blue, -0.5),
+    slab(-34, -9, -18, 26, 3, 14, blue, -0.4),
+    slab(34, -9, -18, 26, 3, 14, blue, 0.4),
+    // Somebody lives up there.
+    slab(0, 21, -6, 9, 7, 9, '#f4ead8'),
+    { kind: 'cone', pos: [0, 28, -6], rBottom: 8, rTop: 0, height: 7, sides: 4, color: palette.terracotta, rotY: Math.PI / 4 },
+    ball(0, 4, -64, 1.6, INK),
+  ]);
+  whale.add(body);
+  return whale;
+}
+
 /** A shaft of light over the landing pad, visible from the launch deck. */
 function buildBeacon() {
   const height = 300;
@@ -673,6 +747,9 @@ export function createScene(canvas: HTMLCanvasElement) {
   let stage = new THREE.Group();
   let ringMeshes: THREE.Mesh[] = [];
   let animateMotes = (_time: number) => {};
+  let letterMeshes: THREE.Group[] = [];
+  let whale = new THREE.Group();
+  const centre = new THREE.Vector3();
   let animateCourier = (_time: number) => {};
 
   /** Fits the shadow map round everything in the level, as the sun sees it. */
@@ -737,9 +814,13 @@ export function createScene(canvas: HTMLCanvasElement) {
       });
       const built = (stage = new THREE.Group());
       const motes = buildUpdrafts();
-      animateMotes = motes.animate;
+      const wind = buildStreams();
+      animateMotes = (time) => (motes.animate(time), wind.animate(time));
       ringMeshes = buildRings();
-      built.add(buildClouds(level), buildMountains(), motes.points, ...ringMeshes, build(prims.filter((p) => !p.hidden)));
+      letterMeshes = buildLetters();
+      whale = buildWhale();
+      centre.set(...level.centre);
+      built.add(buildClouds(level), buildMountains(), motes.points, wind.points, ...ringMeshes, ...letterMeshes, whale, build(prims.filter((p) => !p.hidden)));
       scene.add(built);
       return buildModels().then((town) => void built.add(town));
     },
@@ -749,8 +830,20 @@ export function createScene(canvas: HTMLCanvasElement) {
       (ring.material as THREE.MeshBasicMaterial).opacity = hit ? 0.18 : 1;
       ring.children[0].visible = !hit;
     },
+    /** Takes a lost letter out of the world once it has been picked up. */
+    setLetterFound(index: number, found: boolean) {
+      letterMeshes[index].visible = !found;
+    },
     render(time: number) {
       animateMotes(time);
+      letterMeshes.forEach((letter, i) => {
+        letter.rotation.y = time * 1.4 + i;
+        letter.position.y = letters[i][1] + Math.sin(time * 2 + i) * 0.5;
+      });
+      // One slow lap of the level every six minutes, well above anything that can be flown to.
+      const lap = time / 57;
+      whale.position.set(centre.x + Math.cos(lap) * 620, centre.y + 430 + Math.sin(time / 9) * 12, centre.z + Math.sin(lap) * 900);
+      whale.rotation.y = Math.atan2(Math.sin(lap) * 620, -Math.cos(lap) * 900);
       animateCourier(time);
       sky.position.copy(camera.position);
       renderer.render(scene, camera);

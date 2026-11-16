@@ -35,7 +35,8 @@ export interface Level {
   mood: Mood;
   build(): void;
   briefing: Line[];
-  thanks(time: number, perfect: boolean): Line[];
+  /** What is said on the pad, given the flight time, the landing and how many lost letters were brought. */
+  thanks(time: number, perfect: boolean, letters: number): Line[];
 }
 
 export const levels: Level[] = [valley, gorge];
