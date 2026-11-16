@@ -9,7 +9,13 @@ you launch from the post office with it strapped on behind you. The glider has n
 so every metre of height and every bit of speed has to come from somewhere. Getting there is easy.
 Getting there fast is the game.
 
-This is a playable prototype: one delivery, two routes, a timer and a best time.
+This is a playable prototype: two deliveries, each with a fast way and a safe way to fly it, a
+timer and a best time.
+
+| | Route | Parcel | The fast way |
+| --- | --- | --- | --- |
+| 1 | **The valley** | For Marigold, the lighthouse keeper | Through the town: about 700 m, under 25 seconds. |
+| 2 | **The Amber Gorge** | Honey cake for Warden Bram at Amberwatch Keep | Down the canyon: about 2 km, under 50 seconds. |
 
 ## Play
 
@@ -28,10 +34,11 @@ Then open the address Vite prints (usually http://localhost:5173).
 | Boost | Space | Left button |
 | Airbrake | Shift | Right button |
 | Back to the deck, skip dialogue | R | |
+| Pick a route, from the deck | 1 / 2 | |
 
-Land on the gold pad next to the lighthouse at under 72 km/h. Under 50 km/h is a perfect landing.
+Land on the gold pad at under 72 km/h. Under 50 km/h is a perfect landing.
 Hitting anything, or sinking below the clouds, puts you back on the deck a second later.
-Land it and Marigold has a word for you about how the parcel arrived.
+Land it and whoever the parcel was for has a word for you about how it arrived.
 
 ## Three ways to gain energy
 
@@ -46,6 +53,11 @@ route follows the ring line: between the gate towers, down Chimney Lane, through
 the waterfall rock, along the terrace market, under the viaduct and between the windmills. It can
 be done in under 25 seconds.
 
+In the gorge the ring line threads the Needles, drops into a canyon with a river village on its
+floor, goes under two bridges and an aqueduct, down the high street of a town and under a rock
+arch to the keep. The safe way climbs the warm air off the baker's chimney in the Needles and
+stays high over the rim.
+
 ## How it is built
 
 TypeScript, [Three.js](https://threejs.org) and [Vite](https://vite.dev). There is no physics
@@ -57,7 +69,8 @@ is drawn like a storybook, with flat shading and ink outlines, and all sound is 
 | --- | --- |
 | `src/config.ts` | Every tuning value. Start here to change how the game feels. |
 | `src/flight.ts` | The flight model: speed, drag, stall, boost. |
-| `src/world.ts` | The level layout, and the distance queries for crashing and skimming. |
+| `src/world.ts` | The parts a level is built from, and the distance queries for crashing and skimming. |
+| `src/levels.ts`, `src/levels/` | The routes: what a level is, and the layout of each one. |
 | `src/models.json` | The size and collision boxes of each model, written by `scripts/measure-models.mjs`. |
 | `src/game.ts` | The rules of a delivery: launch, rings, landing, crashing. |
 | `src/scene.ts` | Everything you see. |
@@ -68,8 +81,8 @@ is drawn like a storybook, with flat shading and ink outlines, and all sound is 
 | `src/dialogue.ts` | The dialogue box: portrait, name and typed-out text. |
 | `src/main.ts` | The frame loop and chase camera. |
 
-The flight model and the rules do not touch the renderer, so the tests fly both routes with an
-autopilot to check that they stay possible after a tuning change.
+The flight model and the rules do not touch the renderer, so the tests fly the fast way and the safe way
+of every level with an autopilot to check that they stay possible after a tuning change.
 
 ```sh
 npm test         # run the tests
@@ -88,6 +101,6 @@ scope, and what comes later (ghost replays, parcel types, more islands, a daily 
 ## Credits
 
 The buildings and props are from the [KayKit Medieval Hexagon Pack](https://kaylousberg.itch.io/kaykit-medieval-hexagon)
-and the courier and the two portraits are from the [KayKit Adventurers pack](https://kaylousberg.itch.io/kaykit-adventurers),
+and the courier and the portraits are from the [KayKit Adventurers pack](https://kaylousberg.itch.io/kaykit-adventurers),
 both by [Kay Lousberg](https://www.kaylousberg.com) and released under
 [CC0](https://creativecommons.org/publicdomain/zero/1.0/).
