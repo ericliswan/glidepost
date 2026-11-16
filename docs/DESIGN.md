@@ -93,6 +93,11 @@ Failure states, all followed by an instant return to the launch deck:
 
 ## World
 
+Two routes so far. Each has its own sky, its own recipient and its own light, and each has a fast
+way through the scenery and a safe way over it.
+
+### The valley
+
 One town spread over a cluster of floating islands, built up rather than out: towers, timber
 houses, bridges and markets stacked close enough that the fast line goes *through* the town, not
 over it. Two clear routes lead from the post office to the lighthouse:
@@ -113,6 +118,27 @@ The town sits in a valley. A ring of snow-capped mountains stands round it, with
 behind, so the sky feels like a place with edges rather than an empty box. The mountains are
 solid: you can skim them, and you can fly into them. Further hamlets are scattered between the
 town and the mountains to fill the middle distance.
+
+### The Amber Gorge
+
+A longer run, about 2 km against the valley's 700 m, in sunset light over sandstone. Honey cake
+goes from the post office on the highest crag to Warden Bram at Amberwatch Keep.
+
+| Place | Role |
+| --- | --- |
+| **The Needles** | Thin spires to weave between, straight out of the gate. |
+| **The baker's crag** | The safe route. Warm air off the oven lifts you high enough to glide over the rim all the way to the keep. It takes over a minute. |
+| **The canyon** | The fast route: two stretches with a bend between them, a river village on the floor, lanterns on the walls, and a stone bridge and a plank bridge to go under. |
+| **The rim** | Villages along the top of both walls, and more warm air off the tavern chimney. |
+| **Below the falls** | The river leaves the canyon as a waterfall. Mist at its foot is an updraft for anyone who came out too low. |
+| **The town** | Between the windmills, under the aqueduct, down the high street and out through the town gate. |
+| **Amberwatch Keep** | Destination. Under a rock arch, between two beacons, and down into the courtyard. |
+
+The warden can tell which way you came from your time, and says so.
+
+Rings in the gorge are 135 m apart and the line drops about 7 m in every 100. Closer or steeper
+than that and a full chain runs away: at 100 m apart the glider reached 260 km/h and the whole
+route was over in 28 seconds.
 
 ## Look, sound and feel
 
@@ -158,6 +184,7 @@ In scope:
 - A ring line with chaining
 - Wall-skim boost charging and the boost meter
 - One timed delivery from the post office to the lighthouse, with landing
+- A second, longer delivery down the Amber Gorge, picked with the number keys
 - A briefing from the postmaster before the flight and a thank-you from the keeper after it
 - HUD: speed, altitude, boost meter, timer, ring chain, distance to destination, best time
 - Chase camera with speed-based field of view
