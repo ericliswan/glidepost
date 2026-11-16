@@ -1,6 +1,6 @@
 import { config } from './config';
 import { stepFlight, type FlightInput, type FlightState } from './flight';
-import { crossesRing, distanceToWorld, liftAt, onPad, rings, skimAt, spawn, type Vec3 } from './world';
+import { bells, crossesRing, distanceToWorld, letters, liftAt, onPad, rings, skimAt, spawn, windAt, type Vec3 } from './world';
 
 // The rules of a delivery: launch, rings, landing and the ways a run can end.
 // Pure game logic. Nothing here draws or makes a sound; main.ts reacts to the events.
@@ -9,6 +9,8 @@ export type Phase = 'ready' | 'flying' | 'crashed' | 'landed';
 
 export type GameEvent =
   | { type: 'ring'; chain: number }
+  | { type: 'letter'; index: number }
+  | { type: 'bell' }
   | { type: 'landed'; perfect: boolean }
   | { type: 'crashed'; reason: 'hit' | 'hardLanding' | 'clouds' }
   | { type: 'reset' };
@@ -22,6 +24,10 @@ export interface Game {
   chain: number;
   chainTimer: number;
   ringsHit: boolean[];
+  /** Lost letters picked up. Kept through crashes and from one run to the next. */
+  found: boolean[];
+  /** The steeple the glider is passing, or -1, so a bell rings once for each pass. */
+  bell: number;
   /** Skim strength (0 to 1) and whether thrust was applied on the last step, for feedback. */
   skim: number;
   boosting: boolean;
@@ -30,7 +36,7 @@ export interface Game {
 }
 
 export function createGame(): Game {
-  const game = { glider: {} } as Game;
+  const game = { glider: {}, found: letters.map(() => false) } as Game;
   reset(game);
   return game;
 }
@@ -45,6 +51,7 @@ export function reset(game: Game) {
   game.chain = 0;
   game.chainTimer = 0;
   game.ringsHit = rings.map(() => false);
+  game.bell = -1;
   game.skim = 0;
   game.boosting = false;
   game.respawnTimer = 0;
@@ -70,9 +77,24 @@ export function step(game: Game, input: FlightInput, dt: number): GameEvent | nu
   const from: Vec3 = [g.x, g.y, g.z];
   const air = { lift: liftAt(g.x, g.y, g.z), skim: game.skim };
   game.boosting = stepFlight(g, input, air, dt);
+  // The glider flies through the air, and a stream is air that is going somewhere.
+  const wind = windAt(g.x, g.y, g.z);
+  g.x += wind[0] * dt;
+  g.y += wind[1] * dt;
+  g.z += wind[2] * dt;
   game.time += dt;
 
   let event: GameEvent | null = null;
+
+  const near = (p: Vec3, reach: number) => Math.hypot(p[0] - g.x, p[1] - g.y, p[2] - g.z) < reach;
+  const bell = bells.findIndex((tip) => near(tip, config.secrets.bellReach));
+  if (bell >= 0 && bell !== game.bell) event = { type: 'bell' };
+  game.bell = bell;
+  letters.forEach((letter, i) => {
+    if (game.found[i] || !near(letter, config.secrets.letterReach)) return;
+    game.found[i] = true;
+    event = { type: 'letter', index: i };
+  });
 
   game.chainTimer -= dt;
   if (game.chainTimer <= 0) game.chain = 0;
