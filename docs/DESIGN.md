@@ -109,11 +109,18 @@ Small hamlets on their own islets fill the sky around the route, so there is alw
 near enough to skim. Far below, through gaps in the clouds, is a patchwork of fields, woods and
 villages.
 
+The town sits in a valley. A ring of snow-capped mountains stands round it, with a taller ring
+behind, so the sky feels like a place with edges rather than an empty box. The mountains are
+solid: you can skim them, and you can fly into them. Further hamlets are scattered between the
+town and the mountains to fill the middle distance.
+
 ## Look, sound and feel
 
 - A storybook illustration: flat cel shading with ink outlines, timber houses with bright roofs,
   round trees, heaped cumulus, warm light with cool blue shade, and paper grain over the whole
   picture.
+- Mist lies in the valley: the air thickens with distance and, lower down, with depth, so the feet
+  of the mountains fade into it while the peaks stand clear.
 - The glider is a paper dart with a seat: the courier rides it with the parcel strapped on behind.
 - Streets are dressed to feel lived in: bunting, lamps, market stalls, barrels and crates.
 - People talk in a dialogue box: a portrait, a name tag and a line that writes itself out. Space
