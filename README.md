@@ -49,9 +49,9 @@ be done in under 25 seconds.
 ## How it is built
 
 TypeScript, [Three.js](https://threejs.org) and [Vite](https://vite.dev). There is no physics
-engine. Rock, trees and clouds are built from boxes, cones and spheres; the buildings, market
-props and the courier are [imported models](#credits). Everything is drawn like a storybook, with
-flat shading and ink outlines, and all sound is synthesised.
+engine. Rock, trees, clouds and the mountains round the valley are built from boxes, cones and
+spheres; the buildings, market props and the courier are [imported models](#credits). Everything
+is drawn like a storybook, with flat shading and ink outlines, and all sound is synthesised.
 
 | File | What it does |
 | --- | --- |
