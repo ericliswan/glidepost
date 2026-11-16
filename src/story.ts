@@ -4,6 +4,7 @@ export const speakers = {
   // voice is the pitch, in hertz, of the blips that play while their words are written out.
   postmaster: { name: 'Postmaster Orso', portrait: 'portraits/postmaster.png', voice: 150 },
   keeper: { name: 'Keeper Marigold', portrait: 'portraits/keeper.png', voice: 330 },
+  warden: { name: 'Warden Bram', portrait: 'portraits/warden.png', voice: 215 },
 };
 
 export interface Line {
@@ -42,3 +43,33 @@ function valleyThanks(time: number, perfect: boolean): Line[] {
 }
 
 export const valleyStory = { briefing: valleyBriefing, thanks: valleyThanks };
+
+/** A run down the gorge this quick, in seconds, must have gone through the canyon. */
+const QUICK_GORGE = 60;
+
+const gorgeBriefing = say(
+  'postmaster',
+  'A long one today. This box goes to Warden Bram at Amberwatch Keep, right at the far end of the gorge.',
+  'It is honey cake, and Bram can smell a late parcel from a mile off. Do not stop to taste it.',
+  'Thread the Needles, then drop into the canyon and keep under the bridges. That is the fast way, if you dare.',
+  'Or climb the warm air off the baker\'s chimney in the Needles and stay high over the rim. Slower, but there is less to hit.',
+  'The gold pad is in the keep courtyard. Come in soft. Bram counts every crumb.',
+);
+
+/** The warden of the keep, once the cake is on the pad. */
+function gorgeThanks(time: number, perfect: boolean): Line[] {
+  const seconds = time.toFixed(1);
+  return say(
+    'warden',
+    'Halt! Who goes... oh. Oh, it is the cake. Stand easy, courier.',
+    perfect
+      ? 'Not a crumb out of place. I have seen royal carriages arrive with less care.'
+      : 'You came down hard enough to rattle the gate. The icing has seen better days.',
+    time < QUICK_GORGE
+      ? `${seconds} seconds from the post office! You came through the canyon, did you not? I heard the bridges whistle.`
+      : `${seconds} seconds. The long way, over the rim. Sensible. Slow, but sensible.`,
+    'My thanks. Tell Orso the watch eats well tonight. I may even share.',
+  );
+}
+
+export const gorgeStory = { briefing: gorgeBriefing, thanks: gorgeThanks };
