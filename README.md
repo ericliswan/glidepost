@@ -12,6 +12,8 @@ Getting there fast is the game.
 This is a playable prototype: two deliveries, each with a fast way and a safe way to fly it, a
 timer, a best time, and a few things that are not on the map.
 
+![The front desk: a parcel tag for each route, with its best time and the letters found on it](docs/desk.png)
+
 | | Route | Parcel | The fast way |
 | --- | --- | --- | --- |
 | 1 | **The valley** | For Marigold, the lighthouse keeper | Through the town: about 700 m, under 25 seconds. |
@@ -24,7 +26,8 @@ npm install
 npm run dev
 ```
 
-Then open the address Vite prints (usually http://localhost:5173).
+Then open the address Vite prints (usually http://localhost:5173). You start at the front desk
+of the post office: pick a route off its parcel tag, hear Orso out, and launch.
 
 | Action | Keyboard | Mouse |
 | --- | --- | --- |
@@ -34,7 +37,12 @@ Then open the address Vite prints (usually http://localhost:5173).
 | Boost | Space | Left button |
 | Airbrake | Shift | Right button |
 | Back to the deck, skip dialogue | R | |
-| Pick a route, from the deck | 1 / 2 | |
+| Stop the clock | Esc | |
+
+Esc holds the flight at the sorting office: carry on, start again, pick another route, or open
+the settings. The settings have the sound level, the mouse speed, a switch that swaps dive and
+pull up, and a way to forget every time and letter. They are kept in the browser, as are your best
+times.
 
 Land on the gold pad at under 72 km/h. Under 50 km/h is a perfect landing.
 Hitting anything, or sinking below the clouds, puts you back on the deck a second later.
@@ -76,6 +84,8 @@ TypeScript, [Three.js](https://threejs.org) and [Vite](https://vite.dev). There 
 engine. Rock, trees, clouds and the mountains round the valley are built from boxes, cones and
 spheres; the buildings, market props and the courier are [imported models](#credits). Everything
 is drawn like a storybook, with flat shading and ink outlines, and all sound is synthesised.
+Everything on screen that is not the world is post: parcel tags, a postcard, telegram tape,
+rubber stamps and a receipt, in plain HTML and CSS.
 
 | File | What it does |
 | --- | --- |
@@ -89,6 +99,8 @@ is drawn like a storybook, with flat shading and ink outlines, and all sound is 
 | `src/input.ts` | Keyboard and mouse. |
 | `src/audio.ts` | Wind and sound effects. |
 | `src/hud.ts` | The numbers and messages on screen. |
+| `src/shell.ts` | The front desk, the pause and settings forms, and the receipt. |
+| `src/save.ts` | What the browser keeps: settings, best times and found letters. |
 | `src/story.ts` | Who speaks, and what they say before and after the flight. |
 | `src/dialogue.ts` | The dialogue box: portrait, name and typed-out text. |
 | `src/main.ts` | The frame loop and chase camera. |
@@ -116,3 +128,7 @@ The buildings and props are from the [KayKit Medieval Hexagon Pack](https://kayl
 and the courier and the portraits are from the [KayKit Adventurers pack](https://kaylousberg.itch.io/kaykit-adventurers),
 both by [Kay Lousberg](https://www.kaylousberg.com) and released under
 [CC0](https://creativecommons.org/publicdomain/zero/1.0/).
+
+The typefaces are [Young Serif](https://github.com/noirblancrouge/YoungSerif) and
+[Courier Prime](https://github.com/quoteunquoteapps/CourierPrime), both under the
+[SIL Open Font License 1.1](https://openfontlicense.org). Their licences are in `public/fonts`.
