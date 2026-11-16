@@ -85,6 +85,13 @@ export const config = {
     aimLimit: 0.7,
   },
 
+  secrets: {
+    // How close the glider must pass to pick up a lost letter, in metres.
+    letterReach: 5,
+    // How close to the tip of a steeple rings its bell.
+    bellReach: 9,
+  },
+
   world: {
     // Dropping below this height, under the clouds, means you are lost.
     cloudLevel: 6,

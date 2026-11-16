@@ -33,6 +33,14 @@ export interface Updraft {
   strength: number;
 }
 
+/** A river of air between two points. It carries a glider along with it. */
+export interface Stream {
+  from: Vec3;
+  to: Vec3;
+  radius: number;
+  speed: number;
+}
+
 export type ModelName = keyof typeof models;
 
 /** One copy of an imported model, standing on the ground at pos. */
@@ -82,6 +90,11 @@ const flowers = ['#ffffff', '#ffd84d', '#ff8fb0', '#f2615a', '#b48cf0'];
 export const prims: Prim[] = [];
 export const placements: Placement[] = [];
 export const updrafts: Updraft[] = [];
+export const streams: Stream[] = [];
+/** Lost letters, hanging in the air where another courier dropped them. */
+export const letters: Vec3[] = [];
+/** The tip of every church steeple. Pass close enough and the bell rings. */
+export const bells: Vec3[] = [];
 /** Islands that ride on a wreath of cloud. */
 export const islands: { x: number; top: number; z: number; r: number }[] = [];
 /** Mountains. Solid cones as far as the game is concerned; scene.ts carves them into peaks. */
@@ -128,12 +141,13 @@ function scatter(x: number, z: number, r: number) {
 export const spawn = { x: 0, y: 0, z: 0, yaw: 0 };
 export const pad = { x: 0, y: 0, z: 0, radius: 10 };
 export const rings: Ring[] = [];
-let route: Vec3[] = [];
+// The lines that get flown along: the route itself, then any secret way round it.
+let ways: Vec3[][] = [];
 
 /** Empties the world, ready for a level to be built in it. */
 export function clearWorld() {
-  for (const list of [prims, placements, updrafts, islands, peaks, solids, rings]) list.length = 0;
-  route = [];
+  for (const list of [prims, placements, updrafts, streams, letters, bells, islands, peaks, solids, rings]) list.length = 0;
+  ways = [];
   random = seeded(7);
 }
 
@@ -141,7 +155,8 @@ export function clearWorld() {
 export function setRoute(start: Vec3, ringLine: Vec3[], end: Vec3) {
   Object.assign(spawn, { x: start[0], y: start[1], z: start[2] });
   Object.assign(pad, { x: end[0], y: end[1], z: end[2] });
-  route = [start, ...ringLine, end];
+  const route = [start, ...ringLine, end];
+  ways.push(route);
   // Each ring faces along the line from the ring before it to the ring after it.
   ringLine.forEach((pos, i) => {
     const from = route[i];
@@ -152,29 +167,38 @@ export function setRoute(start: Vec3, ringLine: Vec3[], end: Vec3) {
   });
 }
 
+/** Another line that will be flown along, for the builders to keep clear like the route. */
+export function way(...points: Vec3[]) {
+  ways.push(points);
+}
+
 /** How far a spot on the map is from the route, seen from above. */
 export function fromRoute(x: number, z: number) {
   return Math.min(
-    ...route.slice(1).map((b, i) => {
-      const a = route[i];
-      const dx = b[0] - a[0];
-      const dz = b[2] - a[2];
-      const t = clamp01(((x - a[0]) * dx + (z - a[2]) * dz) / (dx * dx + dz * dz));
-      return Math.hypot(x - a[0] - dx * t, z - a[2] - dz * t);
-    }),
+    ...ways.flatMap((line) =>
+      line.slice(1).map((b, i) => {
+        const a = line[i];
+        const dx = b[0] - a[0];
+        const dz = b[2] - a[2];
+        const t = clamp01(((x - a[0]) * dx + (z - a[2]) * dz) / (dx * dx + dz * dz));
+        return Math.hypot(x - a[0] - dx * t, z - a[2] - dz * t);
+      }),
+    ),
   );
 }
 
 /** True if the ring line passes low over this spot, so nothing tall should grow there. */
 function underRoute(x: number, ground: number, z: number) {
-  return route.slice(1).some((b, i) => {
-    const a = route[i];
-    const dx = b[0] - a[0];
-    const dz = b[2] - a[2];
-    const t = clamp01(((x - a[0]) * dx + (z - a[2]) * dz) / (dx * dx + dz * dz));
-    const above = a[1] + (b[1] - a[1]) * t - ground;
-    return Math.hypot(x - a[0] - dx * t, z - a[2] - dz * t) < 14 && above > -2 && above < 30;
-  });
+  return ways.some((line) =>
+    line.slice(1).some((b, i) => {
+      const a = line[i];
+      const dx = b[0] - a[0];
+      const dz = b[2] - a[2];
+      const t = clamp01(((x - a[0]) * dx + (z - a[2]) * dz) / (dx * dx + dz * dz));
+      const above = a[1] + (b[1] - a[1]) * t - ground;
+      return Math.hypot(x - a[0] - dx * t, z - a[2] - dz * t) < 14 && above > -2 && above < 30;
+    }),
+  );
 }
 
 // --- Builders ----------------------------------------------------------------------------------
@@ -202,8 +226,14 @@ export function model(name: ModelName, x: number, ground: number, z: number, rot
   placements.push({ name, pos: [x, ground, z], rotY, scale });
   const sin = Math.sin(rotY);
   const cos = Math.cos(rotY);
+  const boxes = models[name].boxes;
+  if (name.startsWith('building_church')) {
+    // The top slab of a church is its steeple.
+    const [cx, cy, cz, , h] = boxes[boxes.length - 1];
+    bells.push([x + (cx * cos + cz * sin) * scale, ground + (cy + h / 2) * scale, z + (cz * cos - cx * sin) * scale]);
+  }
   // Collision is the model cut into horizontal slabs, each one a box round that slab.
-  for (const [cx, cy, cz, w, h, d] of models[name].boxes) {
+  for (const [cx, cy, cz, w, h, d] of boxes) {
     add({
       kind: 'box',
       pos: [x + (cx * cos + cz * sin) * scale, ground + cy * scale, z + (cz * cos - cx * sin) * scale],
@@ -480,6 +510,28 @@ export function liftAt(x: number, y: number, z: number): number {
     lift = Math.max(lift, u.strength * (1 - edge * edge) * column);
   }
   return lift;
+}
+
+/** How the air itself is moving at a point, in metres a second: the strongest stream there. */
+export function windAt(x: number, y: number, z: number): Vec3 {
+  let best = 0;
+  let wind: Vec3 = [0, 0, 0];
+  for (const s of streams) {
+    const d = [s.to[0] - s.from[0], s.to[1] - s.from[1], s.to[2] - s.from[2]];
+    const length = Math.hypot(d[0], d[1], d[2]);
+    // How far along the stream the point is, 0 to 1.
+    const t = ((x - s.from[0]) * d[0] + (y - s.from[1]) * d[1] + (z - s.from[2]) * d[2]) / (length * length);
+    if (t <= 0 || t >= 1) continue;
+    const off = Math.hypot(x - s.from[0] - d[0] * t, y - s.from[1] - d[1] * t, z - s.from[2] - d[2] * t) / s.radius;
+    if (off >= 1) continue;
+    // Like an updraft across its width, and it picks up and dies away over its first and last tenth.
+    const edge = clamp01((off - 0.5) * 2);
+    const pull = s.speed * (1 - edge * edge) * clamp01(t * 10) * clamp01((1 - t) * 10);
+    if (pull <= best) continue;
+    best = pull;
+    wind = [(d[0] / length) * pull, (d[1] / length) * pull, (d[2] / length) * pull];
+  }
+  return wind;
 }
 
 /** True if moving from one point to another passes through the ring. */
