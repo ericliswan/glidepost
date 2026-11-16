@@ -1,9 +1,44 @@
+/* Everything on screen is post office paper: parcel tags, a postcard, telegram tape, rubber stamps. */
+
+@font-face {
+  font-family: 'Young Serif';
+  src: url('/fonts/young-serif-400.woff2') format('woff2');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Courier Prime';
+  src: url('/fonts/courier-prime-400.woff2') format('woff2');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Courier Prime';
+  font-weight: 700;
+  src: url('/fonts/courier-prime-700.woff2') format('woff2');
+  font-display: swap;
+}
+
 :root {
-  --ink: #4a3f55;
-  --paper: #fff8ef;
-  --gold: #ffc857;
-  --coral: #f55a3e;
-  font-family: ui-rounded, 'SF Pro Rounded', 'Nunito', 'Segoe UI', system-ui, sans-serif;
+  --paper: oklch(94% 0.03 85);
+  --manila: oklch(88% 0.055 82);
+  --stamp: oklch(98% 0.012 85);
+  --kraft: oklch(72% 0.075 68);
+  --ink: oklch(30% 0.05 300);
+  --muted: oklch(45% 0.04 300);
+  --red: oklch(52% 0.19 28);
+  --blue: oklch(48% 0.12 255);
+  --gold: oklch(84% 0.14 85);
+  --sky: oklch(90% 0.04 230);
+  --shade: color-mix(in oklch, var(--ink) 45%, transparent);
+  --scrim: color-mix(in oklch, var(--ink) 62%, transparent);
+  --rule: color-mix(in oklch, var(--ink) 22%, transparent);
+  /* The red and blue flashes round the edge of an airmail envelope. */
+  --airmail: repeating-linear-gradient(-45deg, var(--red) 0 0.5rem, var(--paper) 0.5rem 1rem, var(--blue) 1rem 1.5rem, var(--paper) 1.5rem 2rem);
+
+  --font-display: 'Young Serif', Georgia, serif;
+  --font-typed: 'Courier Prime', 'Courier New', monospace;
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
 html,
@@ -11,7 +46,10 @@ body {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  background: #cfe6f5;
+  background: var(--sky);
+  color: var(--ink);
+  font-family: var(--font-typed);
+  line-height: 1.45;
 }
 
 #game {
@@ -25,12 +63,49 @@ body::after {
   content: '';
   position: fixed;
   inset: 0;
+  z-index: 5;
   pointer-events: none;
   background:
-    radial-gradient(ellipse at center, transparent 55%, rgb(74 63 85 / 28%) 100%),
+    radial-gradient(ellipse at center, transparent 55%, var(--shade) 130%),
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3CfeColorMatrix values='0 0 0 0 0.3  0 0 0 0 0.25  0 0 0 0 0.3  0 0 0 0.16 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   mix-blend-mode: multiply;
 }
+
+h1,
+h2,
+h3,
+p,
+dl,
+dd {
+  margin: 0;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-style: normal;
+}
+
+button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* The same ring on everything that can be reached with Tab: blue, with paper under it so it shows on any ground. */
+:focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 3px var(--paper);
+}
+
+/* ---------- In flight ---------- */
 
 #hud {
   position: fixed;
@@ -39,90 +114,177 @@ body::after {
   pointer-events: none;
   user-select: none;
   color: var(--paper);
-  text-shadow: 0 1px 6px rgb(74 63 85 / 55%);
-}
-
-#hud b {
-  font-size: 1.9rem;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
+  text-shadow:
+    0.07em 0.07em 0 var(--ink),
+    0 0 0.5em var(--shade);
 }
 
-.top {
+/* Nothing is being flown at the front desk or over a receipt. */
+body:has(:is(#desk, #result):not([hidden])) :is(#hud, #dialogue) {
+  visibility: hidden;
+}
+
+.clock {
   position: absolute;
-  top: 1.2rem;
+  top: 1rem;
   width: 100%;
   text-align: center;
 }
 
 #timer {
-  font-size: 2.6rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
+  font-size: 2.7rem;
+  line-height: 1;
 }
 
 #best {
-  opacity: 0.85;
+  font-size: 0.85rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
-.readout {
+/* A parcel tag: manila card with two corners cut off and a reinforced hole for the string. */
+.tag {
+  position: relative;
+  display: grid;
+  padding: 0.6rem 1.1rem 0.6rem 2.5rem;
+  background: var(--manila);
+  color: var(--ink);
+  text-shadow: none;
+  clip-path: polygon(0.9rem 0, 100% 0, 100% 100%, 0.9rem 100%, 0 calc(100% - 0.9rem), 0 0.9rem);
+}
+
+.tag::before {
+  content: '';
   position: absolute;
-  bottom: 1.6rem;
-  line-height: 1.35;
+  top: calc(50% - 0.55rem);
+  left: 0.7rem;
+  width: 0.45rem;
+  height: 0.45rem;
+  border: 0.32rem solid var(--kraft);
+  border-radius: 50%;
+  background: var(--ink);
 }
 
-.readout.left {
-  left: 2rem;
+.bound {
+  position: absolute;
+  top: 1.2rem;
+  right: 1.4rem;
+  rotate: 2deg;
+  line-height: 1.2;
 }
 
-.readout.right {
-  right: 2rem;
-  text-align: right;
+#destination {
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.bound b {
+  font-size: 1.5rem;
+}
+
+/* Lost letters: a faint outline where one is missing, a sealed envelope where one is found. */
+.letters {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.letters svg {
+  width: 2rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  overflow: visible;
+  opacity: 0.6;
+}
+
+.letters circle {
+  display: none;
+}
+
+.letters .got {
+  fill: var(--stamp);
+  stroke: var(--ink);
+  opacity: 1;
+}
+
+.letters .got circle {
+  display: inline;
+  fill: var(--red);
+  stroke: none;
+}
+
+#satchel {
+  position: absolute;
+  top: 1.4rem;
+  left: 1.6rem;
+  filter: drop-shadow(0.1rem 0.1rem 0 var(--ink));
+}
+
+.dials {
+  position: absolute;
+  bottom: 1.4rem;
+  left: 1.7rem;
+  line-height: 1.3;
+}
+
+.dials b {
+  font-size: 1.8rem;
 }
 
 .boost {
   position: absolute;
-  bottom: 1.8rem;
+  bottom: 1.5rem;
   left: 50%;
-  width: min(22rem, 40vw);
-  transform: translateX(-50%);
+  width: min(20rem, 40vw);
+  translate: -50% 0;
   text-align: center;
   font-size: 0.8rem;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
 }
 
 .boost .bar {
-  height: 0.7rem;
-  margin-bottom: 0.35rem;
+  height: 0.85rem;
+  margin-bottom: 0.3rem;
+  padding: 2px;
   border: 2px solid var(--paper);
-  border-radius: 1rem;
-  overflow: hidden;
-  background: rgb(74 63 85 / 30%);
-  box-shadow: 0 1px 6px rgb(74 63 85 / 35%);
+  background: var(--shade);
 }
 
 #boost-fill {
-  width: 100%;
   height: 100%;
-  background: var(--gold);
-  transform-origin: left;
-  transform: scaleX(0);
+  background: var(--airmail);
+  clip-path: inset(0 100% 0 0);
 }
 
 /* Lights up while a surface is close enough to charge the meter. */
 .boost.skimming .bar {
   border-color: var(--gold);
-  box-shadow: 0 0 14px var(--gold);
 }
 
+.boost.skimming span {
+  color: var(--gold);
+}
+
+/* A chain of rings is stamped on, harder each time. */
 #chain {
   position: absolute;
-  top: 22%;
-  width: 100%;
-  text-align: center;
-  font-size: 2rem;
-  font-weight: 700;
-  color: var(--gold);
+  top: 15%;
+  left: 50%;
+  padding: 0.1rem 0.9rem;
+  border: 0.22rem double var(--red);
+  background: var(--paper);
+  box-shadow: 0 0 0 0.3rem var(--paper);
+  color: var(--red);
+  font-size: 1.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-shadow: none;
+  translate: -50% 0;
+  rotate: -6deg;
   opacity: 0;
   transition: opacity 0.4s;
 }
@@ -132,51 +294,48 @@ body::after {
   transition: none;
 }
 
+/* Notices come in as telegram tape, cut with pinking shears. */
 #message {
   position: absolute;
-  top: 20%;
+  top: 25%;
   left: 50%;
-  transform: translateX(-50%);
-  padding: 1rem 1.8rem;
-  border-radius: 1.2rem;
-  background: rgb(255 248 239 / 88%);
+  max-width: min(34rem, 88vw);
+  padding: 0.55rem 1.7rem 0.45rem;
+  background: var(--paper);
   color: var(--ink);
-  text-shadow: none;
+  letter-spacing: 0.12em;
   text-align: center;
-  line-height: 1.5;
+  text-shadow: none;
+  text-transform: uppercase;
   white-space: pre-line;
-  box-shadow: 0 6px 24px rgb(74 63 85 / 25%);
+  translate: -50% 0;
+  rotate: -0.8deg;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 0.5rem) 25%, 100% 50%, calc(100% - 0.5rem) 75%, 100% 100%, 0 100%, 0.5rem 75%, 0 50%, 0.5rem 25%);
 }
 
 #message:empty {
   display: none;
 }
 
-/* Cards with a heading (the title, a delivery) sit to the left, clear of the view ahead. */
-#message:has(strong) {
-  top: 50%;
-  left: 6%;
-  transform: translateY(-50%);
-  padding: 1.4rem 2rem;
-  text-align: left;
-}
+/* ---------- Someone talking: a postcard, with their face on the stamp ---------- */
 
-#message strong {
-  display: block;
-  font-size: 2.2rem;
-  line-height: 1.3;
-}
-
-/* A character talking: their portrait on the left, their words on a tilted card. */
 #dialogue {
   position: fixed;
   z-index: 2;
   left: 50%;
-  bottom: 1.6rem;
+  bottom: 1.4rem;
   display: flex;
-  align-items: flex-end;
-  width: min(56rem, 94vw);
-  transform: translateX(-50%);
+  gap: 1.5rem;
+  box-sizing: border-box;
+  width: min(50rem, 94vw);
+  padding: 1rem 1.3rem 1.2rem 1.6rem;
+  border: 0.55rem solid transparent;
+  background:
+    linear-gradient(var(--paper), var(--paper)) padding-box,
+    var(--airmail) border-box;
+  box-shadow: 0.5rem 0.5rem 0 var(--shade);
+  translate: -50% 0;
+  rotate: -0.7deg;
   pointer-events: none;
   user-select: none;
 }
@@ -186,52 +345,70 @@ body::after {
 }
 
 /* The instruments make way while someone is talking. */
-#hud:has(~ #dialogue:not([hidden])) :is(.readout, .boost) {
+#hud:has(~ #dialogue:not([hidden])) :is(.dials, .boost) {
   visibility: hidden;
 }
 
+/* The wavy lines of a postmark, run over the edge of the stamp. */
+#dialogue::after {
+  content: '';
+  position: absolute;
+  top: 2rem;
+  right: 6.6rem;
+  width: 4.6rem;
+  height: 2.3rem;
+  background: var(--ink);
+  opacity: 0.55;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 104 52'%3E%3Cpath d='M0 8q6.5-7 13 0t13 0 13 0 13 0 13 0 13 0 13 0 13 0M0 20q6.5-7 13 0t13 0 13 0 13 0 13 0 13 0 13 0 13 0M0 32q6.5-7 13 0t13 0 13 0 13 0 13 0 13 0 13 0 13 0M0 44q6.5-7 13 0t13 0 13 0 13 0 13 0 13 0 13 0 13 0' fill='none' stroke='%23000' stroke-width='2'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  rotate: -5deg;
+}
+
 #portrait {
-  position: relative;
-  z-index: 1;
-  width: min(19rem, 34vw);
-  margin: 0 -5rem -1.2rem -1rem;
-  /* An ink line round the figure, like everything else in the picture. */
-  filter: drop-shadow(2px 0 0 var(--ink)) drop-shadow(-2px 0 0 var(--ink)) drop-shadow(0 -2px 0 var(--ink))
-    drop-shadow(0 8px 10px rgb(74 63 85 / 30%));
-  mask-image: linear-gradient(#000 78%, transparent 96%);
-  animation: step-in 0.25s ease-out;
+  order: 2;
+  flex: none;
+  box-sizing: border-box;
+  width: 8rem;
+  height: 9.6rem;
+  padding: 0.6rem;
+  object-fit: cover;
+  object-position: 50% 0;
+  background:
+    linear-gradient(var(--manila), var(--manila)) content-box,
+    var(--stamp);
+  /* A solid middle, and a row of dots round it that stick out as the perforations. */
+  mask:
+    linear-gradient(var(--ink), var(--ink)) center / calc(100% - 0.6rem) calc(100% - 0.6rem) no-repeat,
+    radial-gradient(circle, var(--ink) 0.19rem, transparent 0.21rem) 0 0 / 0.6rem 0.6rem round;
+  rotate: 3deg;
+  animation: stick 0.2s var(--ease-out);
 }
 
 .speech {
   position: relative;
   flex: 1;
-  min-height: 5.5rem;
-  padding: 1.7rem 2rem 1.6rem 5.5rem;
-  border: 3px solid var(--ink);
-  border-radius: 1.4rem 0.5rem 1.4rem 0.5rem;
-  background: var(--paper);
-  color: var(--ink);
-  font-size: 1.25rem;
-  line-height: 1.5;
-  box-shadow: 0.5rem 0.5rem 0 rgb(74 63 85 / 40%);
-  transform: rotate(-1deg);
+  min-width: 0;
 }
 
-.speech p {
-  margin: 0;
+.from {
+  margin-bottom: 0.2rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
 }
 
 #speaker {
-  position: absolute;
-  top: -1.3rem;
-  left: 4.5rem;
-  padding: 0.15rem 1.1rem;
-  border: 3px solid var(--ink);
-  background: var(--coral);
-  color: var(--paper);
+  color: var(--red);
   font-weight: 700;
-  letter-spacing: 0.04em;
-  transform: rotate(-3deg) skewX(-8deg);
+}
+
+/* Ruled lines, with room for three so the card does not jump about. */
+.speech p {
+  min-height: 5.7rem;
+  background: linear-gradient(transparent calc(100% - 1px), var(--rule) 0) 0 0 / 100% 1.9rem;
+  font-size: 1.12rem;
+  line-height: 1.9rem;
 }
 
 #unwritten {
@@ -240,17 +417,18 @@ body::after {
 
 .hint {
   position: absolute;
-  right: 1.2rem;
-  bottom: 0.4rem;
-  font-size: 0.75rem;
-  letter-spacing: 0.1em;
+  right: 0;
+  bottom: -0.9rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   opacity: 0;
 }
 
 /* The line is fully written and waiting for a press. */
 #dialogue.waiting .hint {
-  opacity: 0.7;
+  opacity: 1;
   animation: nudge 0.8s ease-in-out infinite;
 }
 
@@ -263,22 +441,435 @@ body::after {
   clip-path: inset(50%);
 }
 
-@keyframes step-in {
+/* ---------- The shell: front desk, and the forms that slide over the game ---------- */
+
+.screen {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 1.2rem;
+  overflow-y: auto;
+}
+
+.screen[hidden] {
+  display: none;
+}
+
+.dim {
+  background: var(--scrim);
+}
+
+#settings {
+  z-index: 4;
+}
+
+#desk {
+  place-items: start;
+  align-content: center;
+  gap: 1.7rem;
+  padding: 2rem clamp(1.4rem, 6vw, 5.5rem);
+  background: linear-gradient(90deg, var(--scrim), transparent 62rem);
+  color: var(--paper);
+}
+
+#desk header {
+  position: relative;
+}
+
+#desk h1 {
+  font-size: clamp(3.4rem, 10vw, 6.8rem);
+  line-height: 1;
+  letter-spacing: -0.015em;
+  text-shadow: 0.05em 0.05em 0 var(--ink);
+}
+
+#desk header p {
+  margin-top: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+/* The cancelling postmark, struck over the end of the name. */
+.postmark {
+  position: absolute;
+  top: -3rem;
+  right: -9rem;
+  width: clamp(6rem, 13vw, 9rem);
+  fill: none;
+  stroke: var(--gold);
+  stroke-width: 2.5;
+  rotate: -14deg;
+  opacity: 0.9;
+}
+
+.postmark text {
+  fill: var(--gold);
+  stroke: none;
+  font: 700 15.5px var(--font-typed);
+  letter-spacing: 1.5px;
+}
+
+#routes {
+  display: grid;
+  gap: 1.2rem;
+  width: min(29rem, 100%);
+}
+
+.route {
+  position: relative;
+  rotate: -1.2deg;
+  filter: drop-shadow(0.35rem 0.35rem 0 var(--shade));
+  transition: translate 0.18s var(--ease-out);
+}
+
+.route:nth-child(even) {
+  margin-left: 1.2rem;
+  rotate: 0.9deg;
+}
+
+/* The string, tied off somewhere out of sight. */
+.route::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: calc(100% - 0.9rem);
+  width: 50vw;
+  height: 2px;
+  background: var(--paper);
+  transform-origin: right;
+  rotate: 4deg;
+}
+
+.route .tag {
+  gap: 0.1rem;
+  padding: 0.9rem 1.2rem 0.8rem 2.7rem;
+}
+
+.route .no {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.route strong {
+  font: 400 1.75rem / 1.15 var(--font-display);
+}
+
+.route .kept {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 2px dotted var(--muted);
+}
+
+/* The best time is franked on in blue. A route never flown has an empty box waiting for it. */
+.route .record {
+  padding: 0.05rem 0.5rem;
+  border: 2px solid var(--blue);
+  color: var(--blue);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  rotate: -2deg;
+}
+
+.route .record.none {
+  border: 2px dashed var(--muted);
+  color: var(--muted);
+  rotate: none;
+}
+
+.route:hover {
+  translate: 0.6rem 0;
+}
+
+.route:hover strong {
+  color: var(--red);
+}
+
+.route:active {
+  translate: 0.75rem 0.15rem;
+}
+
+body.loading .route {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* A plain typed line that can be pressed. */
+.typed {
+  padding: 0.25rem 0;
+  text-decoration: underline dotted;
+  text-underline-offset: 0.3em;
+  white-space: nowrap;
+}
+
+.typed:hover {
+  color: var(--red);
+  text-decoration-style: solid;
+}
+
+#desk > .typed {
+  font-weight: 700;
+  text-shadow: 0.07em 0.07em 0 var(--ink);
+}
+
+#desk > .typed:hover {
+  color: var(--gold);
+}
+
+.typed:active,
+.stamp:active {
+  translate: 1px 2px;
+}
+
+/* The one thing to press next, as a rubber stamp. */
+.stamp {
+  padding: 0.5rem 1.3rem 0.35rem;
+  border: 0.24rem double var(--red);
+  color: var(--red);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  rotate: -1.5deg;
+}
+
+.stamp:hover {
+  background: var(--red);
+  color: var(--paper);
+  border-color: var(--paper);
+  outline: 0.12rem solid var(--red);
+}
+
+:is(.stamp, .typed):disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* A post office form, with the airmail flash along the top. */
+.sheet {
+  position: relative;
+  display: grid;
+  justify-items: start;
+  gap: 0.9rem;
+  box-sizing: border-box;
+  width: min(27rem, 100%);
+  padding: 2.4rem 2rem 1.8rem;
+  background: var(--paper);
+  box-shadow: 0.5rem 0.5rem 0 var(--shade);
+  rotate: -0.6deg;
+  animation: slide 0.22s var(--ease-out);
+}
+
+.sheet::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 0.6rem;
+  background: var(--airmail);
+}
+
+.sheet h2 {
+  font-size: 2rem;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+
+.sheet h3 {
+  margin-top: 0.6rem;
+  font-size: 1.25rem;
+}
+
+.sheet > p {
+  color: var(--muted);
+}
+
+.sheet .stamp {
+  margin: 0.4rem 0 0.2rem;
+}
+
+/* The receipt is torn off a pad, and the word that matters is stamped across it. */
+.receipt {
+  rotate: 0.8deg;
+  padding-bottom: 2.4rem;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 0.6rem), 97.5% 100%, 95% calc(100% - 0.6rem), 92.5% 100%, 90% calc(100% - 0.6rem), 87.5% 100%, 85% calc(100% - 0.6rem), 82.5% 100%, 80% calc(100% - 0.6rem), 77.5% 100%, 75% calc(100% - 0.6rem), 72.5% 100%, 70% calc(100% - 0.6rem), 67.5% 100%, 65% calc(100% - 0.6rem), 62.5% 100%, 60% calc(100% - 0.6rem), 57.5% 100%, 55% calc(100% - 0.6rem), 52.5% 100%, 50% calc(100% - 0.6rem), 47.5% 100%, 45% calc(100% - 0.6rem), 42.5% 100%, 40% calc(100% - 0.6rem), 37.5% 100%, 35% calc(100% - 0.6rem), 32.5% 100%, 30% calc(100% - 0.6rem), 27.5% 100%, 25% calc(100% - 0.6rem), 22.5% 100%, 20% calc(100% - 0.6rem), 17.5% 100%, 15% calc(100% - 0.6rem), 12.5% 100%, 10% calc(100% - 0.6rem), 7.5% 100%, 5% calc(100% - 0.6rem), 2.5% 100%, 0 calc(100% - 0.6rem));
+}
+
+.receipt h2 {
+  justify-self: end;
+  margin-bottom: -0.4rem;
+  padding: 0.25rem 0.9rem 0.05rem;
+  border: 0.3rem double var(--red);
+  color: var(--red);
+  font: 700 1.9rem / 1.2 var(--font-typed);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  rotate: 5deg;
+}
+
+#receipt {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+
+#receipt :is(dt, dd) {
+  padding: 0.45rem 0 0.2rem;
+  border-bottom: 2px dotted var(--rule);
+}
+
+#receipt dt {
+  color: var(--muted);
+}
+
+#receipt dd {
+  font-weight: 700;
+  text-align: right;
+}
+
+.form {
+  width: min(32rem, 100%);
+}
+
+.form label {
+  display: grid;
+  grid-template-columns: 8.5rem 1fr;
+  align-items: center;
+  width: 100%;
+}
+
+.form .tick {
+  grid-template-columns: auto 1fr;
+  gap: 0.7rem;
+  cursor: pointer;
+}
+
+/* The slider is a ruled line with a red marker on it. */
+input[type='range'] {
+  appearance: none;
+  width: 100%;
+  height: 1.7rem;
+  margin: 0;
+  background: linear-gradient(var(--ink), var(--ink)) center / 100% 2px no-repeat;
+  cursor: pointer;
+}
+
+input[type='range']::-webkit-slider-thumb {
+  appearance: none;
+  width: 0.8rem;
+  height: 1.5rem;
+  background: var(--red);
+}
+
+input[type='range']::-moz-range-thumb {
+  width: 0.8rem;
+  height: 1.5rem;
+  border: 0;
+  border-radius: 0;
+  background: var(--red);
+}
+
+input[type='range']:hover::-webkit-slider-thumb {
+  background: var(--blue);
+}
+
+input[type='range']:hover::-moz-range-thumb {
+  background: var(--blue);
+}
+
+/* A box on the form, crossed in red. */
+input[type='checkbox'] {
+  appearance: none;
+  display: grid;
+  place-content: center;
+  width: 1.3rem;
+  height: 1.3rem;
+  margin: 0;
+  border: 2px solid var(--ink);
+  cursor: pointer;
+}
+
+input[type='checkbox']:hover {
+  border-color: var(--red);
+}
+
+input[type='checkbox']:checked::before {
+  content: '×';
+  color: var(--red);
+  font-size: 1.7rem;
+  font-weight: 700;
+  line-height: 0;
+}
+
+.keys {
+  display: grid;
+  grid-template-columns: 5rem 1fr;
+  gap: 0.15rem 0.8rem;
+  font-size: 0.92rem;
+}
+
+.keys dt {
+  font-weight: 700;
+}
+
+@keyframes stick {
   from {
     opacity: 0;
-    transform: translateX(-2rem);
+    scale: 1.25;
+  }
+}
+
+@keyframes slide {
+  from {
+    opacity: 0;
+    translate: 0 1.2rem;
   }
 }
 
 @keyframes nudge {
   50% {
-    transform: translateX(0.3rem);
+    translate: 0.3rem 0;
+  }
+}
+
+@media (max-width: 40rem) {
+  /* Small windows: the tag moves under the clock, out of its way. */
+  .bound {
+    top: 5.2rem;
+  }
+
+  #portrait {
+    width: 5.6rem;
+    height: 6.8rem;
+  }
+
+  #dialogue::after {
+    display: none;
+  }
+
+  .postmark {
+    right: -1rem;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #portrait,
-  #dialogue.waiting .hint {
-    animation: none;
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
   }
 }
