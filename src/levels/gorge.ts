@@ -1,6 +1,6 @@
 import type { Level } from '../levels';
 import { gorgeStory } from '../story';
-import { HOMES, SPIRES, ball, box, bunting, clutter, cone, distanceToWorld, facing, fromRoute, lamp, landingPad, launchTower, meadow, model, pad, palette, pine, range, seeded, setRoute, smoke, street, trees, updrafts, type Vec3 } from '../world';
+import { HOMES, SPIRES, ball, box, bunting, clutter, cone, distanceToWorld, facing, fromRoute, lamp, landingPad, launchTower, letters, meadow, model, pad, palette, pine, range, seeded, setRoute, smoke, street, streams, trees, updrafts, way, type Vec3 } from '../world';
 
 // The second route: pillars of sandstone standing out of a sea of cloud at the end of the day.
 // From the post office on the highest crag, through the Needles, down a canyon and out over a
@@ -25,6 +25,11 @@ const ringLine: Vec3[] = [
   [28, 80, -1770], // under the rock arch
   [24, 86, -1905], // between the beacons
 ];
+
+// The Hollow: a butte east of the canyon with a way straight through it, from north to south.
+const hollow = { x: 160, north: -700, south: -860, floor: 136, height: 20, top: 170 };
+// The wind out of its far end, round the outside of the canyon to the aqueduct.
+const gust: [Vec3, Vec3] = [[160, 142, -884], [28, 122, -1262]];
 
 /** A pillar of sandstone with a cap of grass. */
 function spire(x: number, top: number, z: number, r: number) {
@@ -75,6 +80,8 @@ function canyon(from: [number, number], to: [number, number], floor: number, rim
 
 function build() {
   setRoute([0, 231.2, -31], ringLine, [20, 72, -2040]);
+  // The secret way: out of the Needles, through the Hollow and down the wind.
+  way([100, 152, -600], [hollow.x, hollow.floor + 10, hollow.north], [hollow.x, hollow.floor + 10, hollow.south], ...gust);
   const random = seeded(23);
 
   // --- The post office crag: the high start ------------------------------------------------------
@@ -166,6 +173,8 @@ function build() {
     // Mist off the falls: a way back up for anyone who has dropped out of the bottom.
     const [mx, mz] = lower.at(lower.length + 24, 0);
     updrafts.push({ x: mx, z: mz, base: 20, top: 112, radius: 24, strength: 20 });
+    // A letter went over the falls. It is still going round and round at the bottom.
+    letters.push([mx, 44, mz]);
   }
 
   // Cottages along the river, lanterns up the walls and flags across the gap.
@@ -232,6 +241,50 @@ function build() {
     }
   }
 
+  // --- The Hollow: the way nobody tells you about ---------------------------------------------------
+
+  {
+    const { x, floor, height, top } = hollow;
+    const z = (hollow.north + hollow.south) / 2;
+    const length = hollow.north - hollow.south;
+    const roof = floor + height;
+    for (const side of [-1, 1]) box(x + side * 18, FOOT, z, 16, roof - FOOT, length, palette.sandstone);
+    // Wider than the gap and a little short of the ends, so no crack shows and no face is drawn twice.
+    box(x, FOOT, z, 26, floor - FOOT, length - 1, palette.sandstone);
+    box(x, roof, z, 52, top - roof, length, palette.sandstone);
+    box(x, top, z, 52, 2, length, palette.grass);
+    // Spires against the outside, so it is not a block.
+    spire(x - 31, 150, hollow.north - 22, 13);
+    spire(x + 32, 158, z + 10, 15);
+    spire(x - 30, 142, hollow.south + 20, 12);
+    for (const end of [hollow.north, hollow.south]) {
+      const out = end === hollow.north ? 0.4 : -0.4;
+      // Vines hang over both mouths. You fly through them.
+      for (let i = 0; i < 6; i++) {
+        const hang = 4 + ((i * 5) % 7);
+        box(x - 8.5 + i * 3.4, roof - hang, end + out, 1.3, hang, 0.3, i % 2 ? palette.leaf : palette.moss, 0, false);
+      }
+      for (const side of [-1, 1]) ball(x + side * 11.5, floor + 4, end + out, 1.2, palette.lamp, false);
+    }
+    for (let lz = hollow.north - 20; lz > hollow.south; lz -= 30) {
+      for (const side of [-1, 1]) ball(x + side * 9.7, floor + 14, lz, 1, palette.lamp, false);
+    }
+    letters.push([x, floor + 9, z]);
+    // The Hollow draws breath: a draught blows in at one end and out at the other, and without
+    // it a glider would run out of speed half way through.
+    streams.push({ from: [x, floor + 10, hollow.north + 36], to: [x, floor + 8, hollow.south - 20], radius: 12, speed: 30 });
+    streams.push({ from: gust[0], to: gust[1], radius: 16, speed: 30 });
+    // Somebody lives on top, as somebody always does.
+    meadow(x, top + 2, z + 36, 22);
+    meadow(x, top + 2, z - 36, 22);
+    model('building_windmill_yellow', x + 6, top + 2, z + 44, 2.6);
+    model('building_home_A_red', x - 8, top + 2, z + 14, 1.2);
+    model('building_home_B_blue', x + 8, top + 2, z - 30, -0.6);
+    model('building_church_red', x - 6, top + 2, z - 58, 0.4);
+    trees(x, top + 2, z + 36, 22, 6);
+    trees(x, top + 2, z - 36, 22, 6);
+  }
+
   // --- The windmill gap ----------------------------------------------------------------------------
 
   {
@@ -251,6 +304,8 @@ function build() {
     box(x, y + 14, z, 156, 0.4, 3.4, palette.water, 0, false);
     for (let px = x - 75; px <= x + 75; px += 30) box(px, FOOT, z, 8, y + 10 - FOOT, 7, palette.stone);
     crag(x - 94, y + 14, z, 20, 0.3);
+    // And one is caught under the last arch at the spring end.
+    letters.push([x - 60, y + 2, z]);
     crag(x + 94, y + 14, z, 20, 0.75);
   }
 

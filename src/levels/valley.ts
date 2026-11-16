@@ -1,6 +1,6 @@
 import type { Level } from '../levels';
 import { valleyStory } from '../story';
-import { ball, box, bunting, clutter, cone, facing, farIslands, hamlet, island, lamp, landingPad, launchTower, meadow, model, palette, range, setRoute, smoke, street, trees, updrafts, type ModelName, type Vec3 } from '../world';
+import { ball, box, bunting, clutter, cone, facing, farIslands, hamlet, island, lamp, landingPad, launchTower, letters, meadow, model, palette, range, setRoute, smoke, street, streams, trees, updrafts, way, type ModelName, type Vec3 } from '../world';
 
 // The first route: floating islands in a green valley, from the post office to the lighthouse.
 
@@ -9,6 +9,10 @@ const rock = { x: 112, top: 46, z: -385 };
 // The cliff face the ring line runs along, at x = cliffFace.
 export const cliffFace = rock.x - 28;
 const light = { x: 20, top: 96, z: -775 };
+// The cave behind the waterfall: a way straight through the rock, high up, from west to east.
+const cave = { z: rock.z - 50, floor: 120, height: 18, width: 18 };
+// The wind that blows from the far end of the cave round to the lighthouse.
+const breeze: [Vec3, Vec3] = [[166, 124, -456], [52, 116, -712]];
 
 const ringLine: Vec3[] = [
   [34, 132, -110], // the gate
@@ -22,6 +26,8 @@ const ringLine: Vec3[] = [
 
 function build() {
   setRoute([0, 151.2, -31], ringLine, [light.x - 12, light.top + 2, light.z + 20]);
+  // The secret way: over the market roofs, through the cave and down the wind.
+  way([20, cave.floor + 8, cave.z], [150, cave.floor + 8, cave.z], ...breeze);
 
   // --- Post office: the high start ---------------------------------------------------------------
 
@@ -36,6 +42,8 @@ function build() {
   lamp(9, 120, 2);
   clutter(-4, 120, 16, 8, 5);
   trees(0, 120, 0, 32, 10);
+  // A letter that never left: it blew off the back of the island.
+  letters.push([-2, 136, 36]);
 
   // --- The gate: two towers to thread --------------------------------------------------------------
 
@@ -83,7 +91,23 @@ function build() {
   // --- Waterfall rock ------------------------------------------------------------------------------
 
   island(rock.x, rock.top, rock.z, 74);
-  box(rock.x, rock.top, rock.z, 56, 108, 130, palette.cliff);
+  {
+    // The rock is stacked round the cave: under it, either side of it and over it.
+    const roof = cave.floor + cave.height;
+    const north = rock.z + 65 - (cave.z + cave.width / 2);
+    const south = cave.z - cave.width / 2 - (rock.z - 65);
+    box(rock.x, rock.top, rock.z, 56, cave.floor - rock.top, 130, palette.cliff);
+    box(rock.x, cave.floor, rock.z + 65 - north / 2, 56, cave.height, north, palette.cliff);
+    box(rock.x, cave.floor, rock.z - 65 + south / 2, 56, cave.height, south, palette.cliff);
+    box(rock.x, roof, rock.z, 56, rock.top + 108 - roof, 130, palette.cliff);
+    // Lanterns either side of the falls give it away, and more light the way through.
+    for (const side of [-1, 1]) {
+      ball(cliffFace - 0.3, cave.floor + 10, cave.z + side * (cave.width / 2 + 2), 1.2, palette.lamp, false);
+      for (const x of [rock.x - 16, rock.x, rock.x + 16]) ball(x, cave.floor + 13, cave.z + side * (cave.width / 2 - 0.3), 1, palette.lamp, false);
+    }
+    letters.push([rock.x, cave.floor + 8, cave.z]);
+    streams.push({ from: breeze[0], to: breeze[1], radius: 16, speed: 30 });
+  }
   box(rock.x, rock.top + 108, rock.z, 56, 2, 130, palette.grass);
   meadow(rock.x, rock.top + 110, rock.z + 36, 26);
   // Buttresses on the far side, for the silhouette.
@@ -94,8 +118,8 @@ function build() {
   box(rock.x + 8, rock.top + 136, rock.z - 30, 34, 2, 60, palette.grass);
   model('building_windmill_yellow', rock.x + 8, rock.top + 138, rock.z - 34, -Math.PI / 2);
   // The waterfall pours down the far end of the face into a pool. You can fly through the water.
-  box(cliffFace - 0.6, rock.top, rock.z - 54, 1.2, 108, 16, palette.water, 0, false);
-  cone(cliffFace - 7, rock.top, rock.z - 54, 9, 9, 0.6, palette.water, 14);
+  box(cliffFace - 0.6, rock.top, cave.z, 1.2, 108, 16, palette.water, 0, false);
+  cone(cliffFace - 7, rock.top, cave.z, 9, 9, 0.6, palette.water, 14);
   // Mist rising off the pool.
   updrafts.push({ x: cliffFace - 14, z: rock.z - 75, base: rock.top + 4, top: 150, radius: 24, strength: 22 });
 
@@ -247,6 +271,8 @@ function build() {
   cone(light.x + 20, light.top + 41.2, light.z - 17, 3, 3, 5, palette.lamp, 10);
   cone(light.x + 20, light.top + 46.2, light.z - 17, 4.2, 0, 4.5, palette.terracotta, 14);
   landingPad();
+  // Somebody's letter went round the lamp and stuck.
+  letters.push([light.x + 20, light.top + 44, light.z - 26]);
   model('building_home_B_red', light.x - 14, light.top, light.z - 20, 0.2);
   model('building_home_A_blue', light.x + 3, light.top, light.z - 26);
   model('building_home_A_yellow', light.x - 27, light.top, light.z - 4, 0.9);
@@ -262,9 +288,9 @@ function build() {
   hamlet(-20, 70, -480, 22, ['building_tavern_blue', 'building_home_A_green', 'building_home_B_red']);
   hamlet(28, 92, -470, 13, ['building_home_B_yellow']);
   hamlet(102, 86, -488, 13, ['building_home_A_red']);
-  hamlet(130, 90, -560, 20, ['building_tower_B_yellow', 'building_home_A_blue']);
+  hamlet(182, 84, -585, 20, ['building_tower_B_yellow', 'building_home_A_blue']);
   hamlet(14, 100, -572, 14, ['building_home_B_green']);
-  hamlet(84, 106, -588, 13, ['building_home_A_yellow']);
+  hamlet(72, 106, -588, 13, ['building_home_A_yellow']);
   hamlet(-60, 110, -650, 18, ['building_church_blue', 'building_home_A_red']);
   hamlet(-14, 104, -690, 14, ['building_home_B_blue']);
   hamlet(90, 104, -700, 16, ['building_windmill_red']);
