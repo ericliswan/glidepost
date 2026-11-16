@@ -1,10 +1,10 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { config } from './config';
 import type { FlightInput } from './flight';
-import { createGame, launch, step, type Game, type GameEvent } from './game';
+import { createGame, launch, reset, step, type Game, type GameEvent } from './game';
 import { levels, loadLevel } from './levels';
 import { cliffFace } from './levels/valley';
-import { distanceToWorld, islands, liftAt, pad, peaks, placements, rings, spawn, updrafts } from './world';
+import { bells, distanceToWorld, islands, letters, liftAt, pad, peaks, placements, rings, spawn, streams, updrafts, windAt } from './world';
 
 // The valley is what the tests below are written against. Every level gets the checks at the end.
 beforeAll(() => loadLevel(levels[0]));
@@ -21,11 +21,12 @@ function flyingAt(over: Partial<Game['glider']>): Game {
   return game;
 }
 
-/** Steps until the game produces an event that is not a ring, or time runs out. */
+/** Steps until the flight ends one way or another, or time runs out. */
 function untilEvent(game: Game, input = HANDS_OFF, seconds = 30): GameEvent | null {
+  const passing = ['ring', 'letter', 'bell'];
   for (let t = 0; t < seconds; t += DT) {
     const event = step(game, input, DT);
-    if (event && event.type !== 'ring') return event;
+    if (event && !passing.includes(event.type)) return event;
   }
   return null;
 }
@@ -156,6 +157,53 @@ describe('routes', () => {
   });
 });
 
+describe('secrets', () => {
+  it('has wind inside a stream, blowing along it, and none outside', () => {
+    const s = streams[0];
+    const middle = s.from.map((from, axis) => (from + s.to[axis]) / 2);
+    const wind = windAt(middle[0], middle[1], middle[2]);
+    expect(Math.hypot(...wind)).toBeCloseTo(s.speed);
+    // Towards the far end.
+    expect(wind[2] * (s.to[2] - s.from[2])).toBeGreaterThan(0);
+    expect(windAt(middle[0], middle[1] + s.radius + 1, middle[2])).toEqual([0, 0, 0]);
+    expect(windAt(...s.from)).toEqual([0, 0, 0]);
+  });
+
+  it('picks up a lost letter once, and keeps it through a crash', () => {
+    const [x, y, z] = letters[0];
+    const game = flyingAt({ x, y, z: z + 2, speed: 20 });
+    expect(step(game, HANDS_OFF, DT)).toEqual({ type: 'letter', index: 0 });
+    expect(step(game, HANDS_OFF, DT)).toBeNull();
+    reset(game);
+    expect(game.found).toEqual([true, false, false]);
+  });
+
+  it('rings a church bell once for each pass by the steeple', () => {
+    // A steeple with open air on the near side of it.
+    const [x, y, z] = bells.find((tip) => distanceToWorld(tip[0], tip[1] + 5, tip[2] + 12) > 4)!;
+    const game = flyingAt({ x, y: y + 5, z: z + 12, pitch: 0, speed: 20 });
+    const events: (GameEvent | null)[] = [];
+    for (let t = 0; t < 1.5; t += DT) events.push(step(game, HANDS_OFF, DT));
+    expect(events.filter((event) => event?.type === 'bell')).toHaveLength(1);
+    expect(game.phase).toBe('flying');
+  });
+
+  it('can be flown through the cave behind the waterfall and round to the lighthouse on the breeze', () => {
+    const cave = letters[1];
+    const breeze = streams[0];
+    // Level with the mouth, having climbed the mist beside it.
+    const game = flyingAt({ x: 50, y: cave[1] + 2, z: cave[2], yaw: -Math.PI / 2, pitch: 0, speed: 28 });
+    const g = game.glider;
+    while (game.phase === 'flying' && g.x < 150) step(game, steer(game, 200, cave[2], -0.02), DT);
+    expect(game.found[1]).toBe(true);
+    while (game.phase === 'flying' && g.z > breeze.to[2] + 10) step(game, steer(game, breeze.to[0], breeze.to[2], BEST_GLIDE), DT);
+    while (game.phase === 'flying' && !overPad(game)) step(game, steer(game, pad.x, pad.z, BEST_GLIDE), DT);
+
+    expect(game.phase).toBe('flying');
+    expect(g.y).toBeGreaterThan(pad.y);
+  });
+});
+
 // How long the ring line may take in each level, in seconds.
 const PAR: Record<string, number> = { valley: 25, gorge: 55 };
 
@@ -195,6 +243,11 @@ describe.each(levels)('$name', (level) => {
     }
   });
 
+  it('hides three letters, each with room to fly up to it', () => {
+    expect(letters).toHaveLength(3);
+    for (const letter of letters) expect(distanceToWorld(...letter)).toBeGreaterThan(config.glider.radius * 4);
+  });
+
   it('can be flown down the ring line, chaining every ring', () => {
     const game = createGame();
     launch(game);
@@ -221,6 +274,24 @@ describe.each(levels)('$name', (level) => {
 
 describe('the gorge, the long way', () => {
   beforeAll(() => loadLevel(levels[1]));
+
+  it('can be flown through the Hollow and down the gust to the aqueduct', () => {
+    const [draught, gust] = streams;
+    const arch = rings.reduce((nearest, ring) => (Math.abs(ring.pos[2] - gust.to[2]) < Math.abs(nearest.pos[2] - gust.to[2]) && ring.pos[2] < gust.to[2] ? ring : nearest), rings[rings.length - 1]).pos;
+    // Off the route to the east, past the Needles, at the height of the rim.
+    const game = flyingAt({ x: 120, y: 152, z: -620, yaw: -0.4, pitch: 0, speed: 30 });
+    const g = game.glider;
+    while (game.phase === 'flying' && g.z > draught.from[2] - 26) step(game, steer(game, draught.from[0], draught.from[2] - 36, -0.05), DT);
+    while (game.phase === 'flying' && g.z > draught.to[2]) step(game, steer(game, draught.to[0], draught.to[2] - 40, -0.03), DT);
+    expect(game.found[1]).toBe(true);
+    // A glide alone would have stalled in there.
+    expect(g.speed).toBeGreaterThan(config.flight.stallSpeed * 1.5);
+    while (game.phase === 'flying' && g.z > gust.to[2] + 10) step(game, steer(game, gust.to[0], gust.to[2], BEST_GLIDE), DT);
+    while (game.phase === 'flying' && g.z > arch[2]) step(game, steer(game, arch[0], arch[2], BEST_GLIDE), DT);
+
+    expect(game.phase).toBe('flying');
+    expect(Math.hypot(g.x - arch[0], g.y - arch[1])).toBeLessThan(config.rings.radius);
+  }, 20_000);
 
   it('is too far to glide straight to the keep', () => {
     const away = 5000;
