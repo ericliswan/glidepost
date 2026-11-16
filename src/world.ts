@@ -55,6 +55,7 @@ export const palette = {
   grassDark: '#6dbd58',
   rock: '#a8937f',
   cliff: '#cfa07c',
+  sandstone: '#d98a5c',
   stone: '#f1e8d8',
   wall: '#fff3dc',
   wallPink: '#fbd5c2',
@@ -392,8 +393,8 @@ export function range(cx: number, cz: number, rx: number, rz: number, count: num
   }
 }
 
-const HOMES: ModelName[] = ['building_home_A_red', 'building_home_B_blue', 'building_home_A_yellow', 'building_home_B_green', 'building_home_A_blue', 'building_home_B_red'];
-const SPIRES: ModelName[] = ['building_church_red', 'building_tower_A_green', 'building_windmill_red', 'building_tower_B_yellow', 'building_church_blue', 'building_windmill_yellow'];
+export const HOMES: ModelName[] = ['building_home_A_red', 'building_home_B_blue', 'building_home_A_yellow', 'building_home_B_green', 'building_home_A_blue', 'building_home_B_red'];
+export const SPIRES: ModelName[] = ['building_church_red', 'building_tower_A_green', 'building_windmill_red', 'building_tower_B_yellow', 'building_church_blue', 'building_windmill_yellow'];
 
 /** Hamlets round an oval, for the middle distance, wherever nothing stands and the route is clear. */
 export function farIslands(cx: number, cz: number, rx: number, rz: number, count: number, low: number, high: number) {
@@ -441,7 +442,8 @@ export function distanceToWorld(x: number, y: number, z: number): number {
     const dx = x - prim.pos[0];
     const dy = y - prim.pos[1];
     const dz = z - prim.pos[2];
-    if (Math.hypot(dx, dy, dz) - bound >= best) continue;
+    // Math.hypot is several times slower than this, and this runs for every solid on every step.
+    if (Math.sqrt(dx * dx + dy * dy + dz * dz) - bound >= best) continue;
 
     let d: number;
     if (prim.kind === 'box') {
