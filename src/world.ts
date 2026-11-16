@@ -83,6 +83,8 @@ export const placements: Placement[] = [];
 export const updrafts: Updraft[] = [];
 /** Islands that ride on a wreath of cloud. */
 export const islands: { x: number; top: number; z: number; r: number }[] = [];
+/** Mountains. Solid cones as far as the game is concerned; scene.ts carves them into peaks. */
+export const peaks: Extract<Prim, { kind: 'cone' }>[] = [];
 
 // Solid shapes, with what the distance query needs worked out once. Filled as the level is
 // built, so the builders below can ask what is already standing somewhere.
@@ -575,6 +577,58 @@ hamlet(84, 106, -588, 13, ['building_home_A_yellow']);
 hamlet(-60, 110, -650, 18, ['building_church_blue', 'building_home_A_red']);
 hamlet(-14, 104, -690, 14, ['building_home_B_blue']);
 hamlet(90, 104, -700, 16, ['building_windmill_red']);
+
+// --- The mountains: a wall round the whole valley -----------------------------------------------
+
+// They stand on the land far below the clouds, so no foot ever shows through a gap.
+const VALLEY_FLOOR = -420;
+
+/** One peak: `radius` across at cloud level and `height` above it. */
+function peak(x: number, z: number, radius: number, height: number) {
+  const full = height - VALLEY_FLOOR;
+  const prim = { kind: 'cone' as const, pos: [x, VALLEY_FLOOR + full / 2, z] as Vec3, height: full, rTop: 0, rBottom: (radius * full) / height, sides: 14, color: '', hidden: true };
+  peaks.push(prim);
+  add(prim);
+}
+
+/** A ring of peaks on an oval, each with a couple of lower shoulders. */
+function range(cx: number, cz: number, rx: number, rz: number, count: number, size: number, steep: number) {
+  for (let i = 0; i < count; i++) {
+    const angle = ((i + random() * 0.5) / count) * Math.PI * 2;
+    const out = 1 + random() * 0.12;
+    const x = cx + Math.cos(angle) * rx * out;
+    const z = cz + Math.sin(angle) * rz * out;
+    const r = size * (0.85 + random() * 0.4);
+    const h = r * steep * (0.75 + random() * 0.5);
+    peak(x, z, r, h);
+    for (let s = 0; s < 2; s++) {
+      // Shoulders lean along the wall and outwards, never in towards the town.
+      const lean = angle + (s ? 1 : -1) * (0.9 + random() * 0.8);
+      peak(x + Math.cos(lean) * r * 0.7, z + Math.sin(lean) * r * 0.7, r * 0.7, h * (0.45 + random() * 0.25));
+    }
+  }
+}
+range(60, -390, 720, 980, 18, 290, 1.4);
+range(60, -390, 1300, 1500, 14, 480, 1.9);
+
+// --- Far islands: the middle distance between the town and the mountains ------------------------
+
+{
+  const HOMES: ModelName[] = ['building_home_A_red', 'building_home_B_blue', 'building_home_A_yellow', 'building_home_B_green', 'building_home_A_blue', 'building_home_B_red'];
+  const SPIRES: ModelName[] = ['building_church_red', 'building_tower_A_green', 'building_windmill_red', 'building_tower_B_yellow', 'building_church_blue', 'building_windmill_yellow'];
+  for (let i = 0; i < 22; i++) {
+    const angle = (i / 22) * Math.PI * 2 + random() * 0.2;
+    const out = 0.82 + random() * 0.3;
+    const x = 60 + Math.cos(angle) * 340 * out;
+    const z = -390 + Math.sin(angle) * 540 * out;
+    const big = i % 4 === 0;
+    const r = big ? 28 + random() * 8 : 12 + random() * 8;
+    const top = 50 + random() * 120;
+    // Not where something already stands, and not across the line home.
+    if (distanceToWorld(x, top, z) < r + 30 || underRoute(x, top - 20, z)) continue;
+    hamlet(x, top, z, r, big ? [SPIRES[i % 6], HOMES[i % 6], HOMES[(i + 1) % 6], SPIRES[(i + 3) % 6]] : [i % 3 ? HOMES[i % 6] : SPIRES[i % 6]]);
+  }
+}
 
 // --- Queries ---------------------------------------------------------------------------------
 

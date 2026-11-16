@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { config } from './config';
 import type { FlightInput } from './flight';
 import { createGame, launch, step, type Game, type GameEvent } from './game';
-import { cliffFace, distanceToWorld, liftAt, pad, placements, rings, spawn, updrafts } from './world';
+import { cliffFace, distanceToWorld, islands, liftAt, pad, peaks, placements, rings, spawn, updrafts } from './world';
 
 const DT = 1 / 120;
 const HANDS_OFF: FlightInput = { pitch: 0, turn: 0, boost: false, brake: false };
@@ -79,6 +79,16 @@ describe('level', () => {
     expect(distanceToWorld(sideX, ground + 12, sideZ)).toBeGreaterThan(1);
   });
 
+  it('stands the mountains clear of every island', () => {
+    for (const island of islands) {
+      for (const peak of peaks) {
+        const up = (island.top - (peak.pos[1] - peak.height / 2)) / peak.height;
+        const gap = Math.hypot(island.x - peak.pos[0], island.z - peak.pos[2]) - peak.rBottom * (1 - up) - island.r;
+        expect(gap).toBeGreaterThan(20);
+      }
+    }
+  });
+
   it('has lift inside updrafts and none outside', () => {
     const u = updrafts[0];
     expect(liftAt(u.x, u.base + 40, u.z)).toBe(u.strength);
@@ -106,7 +116,7 @@ describe('rules', () => {
   });
 
   it('is lost when it drops below the clouds', () => {
-    const game = flyingAt({ x: 300, y: 30, z: 300, pitch: -0.5 });
+    const game = flyingAt({ x: -40, y: 30, z: -390, pitch: -0.5 });
     expect(untilEvent(game)).toEqual({ type: 'crashed', reason: 'clouds' });
   });
 
