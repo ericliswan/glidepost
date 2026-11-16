@@ -5,17 +5,17 @@ import { createDialogue } from './dialogue';
 import { createGame, launch, reset, step, type GameEvent } from './game';
 import { createHud } from './hud';
 import { createInput } from './input';
+import { levels, loadLevel, type Level } from './levels';
 import { createScene } from './scene';
-import { briefing, thanks } from './story';
 
 // Wires the rules to the screen, speakers and controls, and runs the frame loop.
 
 const BEST_KEY = 'glidepost.best';
 const MAX_STEP = 1 / 120;
-const READY = `<strong>Glidepost</strong>A parcel for the lighthouse keeper.
+const ready = () => `<strong>${level.name}</strong>${level.blurb}
 W / S dive and pull up · A / D turn
 Space boost · Shift airbrake
-Press Space or click to launch`;
+Press Space or click to launch · ${levels.map((_, i) => i + 1).join(' / ')} to change route`;
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
 const game = createGame();
@@ -24,8 +24,11 @@ const input = createInput(canvas);
 const audio = createAudio();
 const hud = createHud();
 const dialogue = createDialogue(audio.talk);
-let briefed = false;
-let best = Number(localStorage.getItem(BEST_KEY)) || null;
+let level = levels[0];
+// True while a route is being built: the frame loop draws, but nothing can be flown.
+let loading = true;
+const briefed = new Set<Level>();
+let best: number | null = null;
 
 // Browsers only allow sound once the player has pressed something.
 addEventListener('keydown', () => audio.start());
@@ -65,11 +68,39 @@ function updateCamera(dt: number) {
 function onDeck() {
   input.centre();
   snapCamera = true;
-  // The postmaster explains the job once. After that, a retry is instant.
-  hud.message(briefed ? READY : '');
-  if (!briefed) dialogue.play(briefing, () => hud.message(READY));
-  briefed = true;
+  // The postmaster explains each job once. After that, a retry is instant.
+  hud.message(briefed.has(level) ? ready() : '');
+  if (!briefed.has(level)) dialogue.play(level.briefing, () => hud.message(ready()));
+  briefed.add(level);
 }
+
+/** Builds a route in place of the one that was there, and puts the glider on its launch deck. */
+async function choose(next: Level) {
+  loading = true;
+  level = next;
+  dialogue.close();
+  hud.message('Loading…');
+  loadLevel(level);
+  reset(game);
+  // Times from before there was more than one route belong to the first.
+  best = Number(localStorage.getItem(`${BEST_KEY}.${level.id}`) ?? (level === levels[0] ? localStorage.getItem(BEST_KEY) : null)) || null;
+  hud.destination(level.destination);
+  try {
+    await scene.setLevel(level);
+  } catch {
+    return hud.message('Could not load the models. Try reloading.');
+  }
+  // Forget any key pressed while loading, so the flight does not start by itself.
+  input.takeLaunch();
+  loading = false;
+  onDeck();
+}
+
+// shortcut: routes are picked with the number keys, until there is a proper menu to pick them from.
+addEventListener('keydown', (event) => {
+  const picked = levels[Number(event.code.replace('Digit', '')) - 1];
+  if (picked && picked !== level && !loading && (game.phase === 'ready' || game.phase === 'landed')) choose(picked);
+});
 
 function handle(event: GameEvent) {
   if (event.type === 'ring') {
@@ -78,13 +109,13 @@ function handle(event: GameEvent) {
     const newBest = !best || game.time < best;
     if (newBest) {
       best = game.time;
-      localStorage.setItem(BEST_KEY, String(best));
+      localStorage.setItem(`${BEST_KEY}.${level.id}`, String(best));
     }
     audio.land(event.perfect);
     const notes = [`${game.time.toFixed(2)} s`, event.perfect && 'Perfect landing', newBest && 'New best!'];
     const result = `<strong>Delivered!</strong>${notes.filter(Boolean).join(' · ')}\nPress R to fly again`;
     hud.message('');
-    dialogue.play(thanks(game.time, event.perfect), () => hud.message(result));
+    dialogue.play(level.thanks(game.time, event.perfect), () => hud.message(result));
   } else if (event.type === 'crashed') {
     audio.crash();
     hud.message(
@@ -107,9 +138,10 @@ function frame(now: number) {
   last = now;
 
   // While someone is talking, Space and click turn the page and R cuts them short.
-  const wantsLaunch = input.takeLaunch();
+  const wantsLaunch = input.takeLaunch() && !loading;
+  const wantsRestart = input.takeRestart() && !loading;
   const talking = dialogue.active;
-  if (input.takeRestart() || (wantsLaunch && !talking && game.phase === 'landed')) {
+  if (wantsRestart || (wantsLaunch && !talking && game.phase === 'landed')) {
     dialogue.close();
     reset(game);
     onDeck();
@@ -145,14 +177,7 @@ function frame(now: number) {
   requestAnimationFrame(frame);
 }
 
-hud.message('Loading…');
-scene.loaded.then(
-  () => {
-    // Forget any key pressed while loading, so the flight does not start by itself.
-    input.takeLaunch();
-    last = performance.now();
-    onDeck();
-    requestAnimationFrame(frame);
-  },
-  () => hud.message('Could not load the models. Try reloading.'),
-);
+Promise.all([scene.loaded, choose(level)]).then(() => {
+  last = performance.now();
+  requestAnimationFrame(frame);
+});

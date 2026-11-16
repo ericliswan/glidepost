@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { config } from './config';
 import type { FlightInput } from './flight';
 import { createGame, launch, step, type Game, type GameEvent } from './game';
-import { cliffFace, distanceToWorld, islands, liftAt, pad, peaks, placements, rings, spawn, updrafts } from './world';
+import { levels, loadLevel } from './levels';
+import { cliffFace } from './levels/valley';
+import { distanceToWorld, islands, liftAt, pad, peaks, placements, rings, spawn, updrafts } from './world';
+
+loadLevel(levels[0]);
 
 const DT = 1 / 120;
 const HANDS_OFF: FlightInput = { pitch: 0, turn: 0, boost: false, brake: false };

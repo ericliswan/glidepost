@@ -17,7 +17,7 @@ const say = (who: Line['who'], ...texts: string[]): Line[] => texts.map((text) =
 const QUICK = 30;
 
 /** Your boss, on the launch deck, before the first flight. */
-export const briefing = say(
+const valleyBriefing = say(
   'postmaster',
   'There you are! One parcel, strapped on and ready. It goes to Marigold, up at the lighthouse.',
   'Marigold has asked after it every day this week, so no dawdling. Follow the beam of light and you cannot miss the place.',
@@ -26,7 +26,7 @@ export const briefing = say(
 );
 
 /** The lighthouse keeper, once the parcel is on the pad. */
-export function thanks(time: number, perfect: boolean): Line[] {
+function valleyThanks(time: number, perfect: boolean): Line[] {
   const seconds = time.toFixed(1);
   return say(
     'keeper',
@@ -40,3 +40,5 @@ export function thanks(time: number, perfect: boolean): Line[] {
     'Thank you, courier. Tell Orso the lamp oil arrived, and that I said hello.',
   );
 }
+
+export const valleyStory = { briefing: valleyBriefing, thanks: valleyThanks };

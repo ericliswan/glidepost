@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { config } from './config';
+import type { Level } from './levels';
 import { islands, pad, palette, peaks, placements, prims, rings, seeded, updrafts, type Prim } from './world';
 
 // Everything you can see. Builds meshes from the level's primitives and models, and owns the
@@ -9,14 +10,8 @@ import { islands, pad, palette, peaks, placements, prims, rings, seeded, updraft
 // The look is a storybook illustration: flat bands of light and shade, an ink line around
 // every solid thing, heaped white clouds, and painted countryside far below.
 
-// A summer afternoon: the sun high, ahead and to the left.
-const SUN_DIRECTION = new THREE.Vector3(-0.6, 0.7, -0.4).normalize();
-const SKY = { zenith: '#2a78dc', middle: '#69b4f4', horizon: '#dcefff', sun: '#fffbe6' };
 const INK = '#5b3f4d';
-const LEVEL_CENTRE = new THREE.Vector3(60, 60, -390);
 const LAND_LEVEL = -420;
-// The land is tinted towards the sky, as distant things are, so the islands stand out against it.
-const LAND_HAZE = '#cfe2f2';
 
 /** Repeatable 0 to 1 noise from a position, so vertices that share a corner move together. */
 function noise(x: number, y: number, z: number) {
@@ -239,20 +234,24 @@ function buildMountains() {
 
 const loader = new GLTFLoader();
 const toon = (map: THREE.Texture | null) => new THREE.MeshToonMaterial({ map, gradientMap: ramp });
+// Each model is loaded once and kept, however many levels use it.
+const templates = new Map<string, { paint: THREE.BufferGeometry; ink: THREE.BufferGeometry }>();
+const modelMaterial = toon(null);
+/** Materials every level shares, which must outlive the level that is being cleared away. */
+const shared = new Set<THREE.Material>([paintMaterial, glowMaterial, waterMaterial, inkMaterial, modelMaterial]);
 
 /** Every building and prop in the level, loaded and merged into one painted mesh and one ink mesh. */
 async function buildModels() {
-  let atlas: THREE.Texture | null = null;
-  const templates = new Map<string, { paint: THREE.BufferGeometry; ink: THREE.BufferGeometry }>();
+  const missing = [...new Set(placements.map((p) => p.name))].filter((name) => !templates.has(name));
   await Promise.all(
-    [...new Set(placements.map((p) => p.name))].map(async (name) => {
+    missing.map(async (name) => {
       const gltf = await loader.loadAsync(`models/${name}.gltf`);
       gltf.scene.updateMatrixWorld(true);
       const parts: THREE.BufferGeometry[] = [];
       gltf.scene.traverse((child) => {
         if (!(child instanceof THREE.Mesh)) return;
         // Every model in the pack is painted from the same small sheet of colours.
-        atlas ??= child.material.map;
+        modelMaterial.map ??= child.material.map;
         parts.push(child.geometry.clone().applyMatrix4(child.matrixWorld).toNonIndexed());
       });
       const paint = mergeGeometries(parts);
@@ -274,7 +273,7 @@ async function buildModels() {
     paint.push(template.paint.clone().applyMatrix4(place));
     ink.push(template.ink.clone().applyMatrix4(place));
   }
-  const painted = new THREE.Mesh(mergeGeometries(paint), toon(atlas));
+  const painted = new THREE.Mesh(mergeGeometries(paint), modelMaterial);
   painted.castShadow = painted.receiveShadow = true;
   return new THREE.Group().add(painted, new THREE.Mesh(mergeGeometries(ink), inkMaterial));
 }
@@ -307,11 +306,12 @@ function buildSky() {
       side: THREE.BackSide,
       depthWrite: false,
       uniforms: {
-        zenith: { value: new THREE.Color(SKY.zenith) },
-        middle: { value: new THREE.Color(SKY.middle) },
-        horizon: { value: new THREE.Color(SKY.horizon) },
-        sunColor: { value: new THREE.Color(SKY.sun) },
-        sunDirection: { value: SUN_DIRECTION },
+        // Filled in from the mood of each level.
+        zenith: { value: new THREE.Color() },
+        middle: { value: new THREE.Color() },
+        horizon: { value: new THREE.Color() },
+        sunColor: { value: new THREE.Color() },
+        sunDirection: { value: new THREE.Vector3(0, 1, 0) },
       },
       vertexShader: `
         varying vec3 direction;
@@ -426,13 +426,14 @@ function buildLand() {
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 8;
-  const land = new THREE.Mesh(new THREE.CircleGeometry(3000, 48), new THREE.MeshBasicMaterial({ map: texture, color: LAND_HAZE }));
+  const land = new THREE.Mesh(new THREE.CircleGeometry(3000, 48), new THREE.MeshBasicMaterial({ map: texture }));
   land.rotation.x = -Math.PI / 2;
-  land.position.set(LEVEL_CENTRE.x, LAND_LEVEL, LEVEL_CENTRE.z);
   return land;
 }
 
-function buildClouds() {
+function buildClouds(level: Level) {
+  const [cx, cy, cz] = level.centre;
+  const [wide, long] = level.spread;
   const random = seeded(11);
   const near: THREE.Matrix4[] = [];
   const far: THREE.Matrix4[] = [];
@@ -462,12 +463,12 @@ function buildClouds() {
 
   // A broken layer of low cloud with the land showing through the gaps. The tops are at the
   // height where the game calls you lost.
-  for (let i = 0; i < 110; i++) {
+  for (let i = 0; i < (110 * wide * long) / (620 * 820); i++) {
     const angle = random() * Math.PI * 2;
     const reach = Math.sqrt(random());
     const size = 40 + random() * 60;
     // Spread over the valley floor, out to the feet of the mountains.
-    heap(near, LEVEL_CENTRE.x + Math.cos(angle) * reach * 620, config.world.cloudLevel - size * 0.2, LEVEL_CENTRE.z + Math.sin(angle) * reach * 820, size, 0.2);
+    heap(near, cx + Math.cos(angle) * reach * wide, config.world.cloudLevel - size * 0.2, cz + Math.sin(angle) * reach * long, size, 0.2);
   }
 
   // Each island rides on a wreath of cloud. You can fly through it, but there is rock inside.
@@ -486,7 +487,7 @@ function buildClouds() {
   for (let i = 0; i < 9; i++) {
     const angle = random() * Math.PI * 2;
     const reach = 250 + random() * 600;
-    heap(near, LEVEL_CENTRE.x + Math.cos(angle) * reach, 270 + random() * 160, LEVEL_CENTRE.z + Math.sin(angle) * reach, 22 + random() * 22, 0.6);
+    heap(near, cx + Math.cos(angle) * reach, cy + 210 + random() * 160, cz + Math.sin(angle) * reach, 22 + random() * 22, 0.6);
   }
 
   // Great towers of cumulus standing all round the horizon.
@@ -494,14 +495,14 @@ function buildClouds() {
     const angle = (i + random() * 0.7) * ((Math.PI * 2) / 18);
     const reach = 1400 + random() * 900;
     const size = 190 + random() * 200;
-    heap(far, LEVEL_CENTRE.x + Math.cos(angle) * reach, -160 + random() * 200, LEVEL_CENTRE.z + Math.sin(angle) * reach, size, 0.7, 3);
+    heap(far, cx + Math.cos(angle) * reach, -160 + random() * 200, cz + Math.sin(angle) * reach, size, 0.7, 3);
   }
 
   const group = new THREE.Group();
   const sphere = new THREE.SphereGeometry(1, 20, 14);
   for (const [list, fog] of [[near, true], [far, false]] as const) {
-    // Emissive keeps the shaded side of a cloud a soft blue instead of grey.
-    const material = new THREE.MeshToonMaterial({ color: '#ffffff', emissive: '#b4c6f5', emissiveIntensity: 0.55, gradientMap: ramp, fog });
+    // Emissive keeps the shaded side of a cloud the colour of the sky instead of grey.
+    const material = new THREE.MeshToonMaterial({ color: '#ffffff', emissive: level.mood.cloudShade, emissiveIntensity: 0.55, gradientMap: ramp, fog });
     const mesh = new THREE.InstancedMesh(sphere, material, list.length);
     list.forEach((matrix, i) => mesh.setMatrixAt(i, matrix));
     mesh.receiveShadow = fog;
@@ -578,6 +579,8 @@ function buildRings() {
   });
 }
 
+let dot: THREE.Texture | undefined;
+
 /** A soft round dot, so particles are not squares. */
 function dotTexture() {
   const canvas = document.createElement('canvas');
@@ -604,7 +607,7 @@ function buildUpdrafts() {
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   const points = new THREE.Points(
     geometry,
-    new THREE.PointsMaterial({ color: '#fff3cf', map: dotTexture(), size: 3.2, transparent: true, opacity: 0.9, depthWrite: false, fog: false }),
+    new THREE.PointsMaterial({ color: '#fff3cf', map: (dot ??= dotTexture()), size: 3.2, transparent: true, opacity: 0.9, depthWrite: false, fog: false }),
   );
   points.frustumCulled = false;
 
@@ -639,7 +642,6 @@ function buildBeacon() {
     new THREE.CylinderGeometry(7, 3.5, height, 20, 1, true),
     new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false }),
   );
-  beacon.position.set(pad.x, pad.y + height / 2, pad.z);
   return beacon;
 }
 
@@ -649,28 +651,45 @@ export function createScene(canvas: HTMLCanvasElement) {
   renderer.shadowMap.enabled = true;
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(SKY.horizon, 250, 3000);
+  const fog = (scene.fog = new THREE.Fog('#ffffff', 250, 3000));
   const camera = new THREE.PerspectiveCamera(config.camera.baseFov, 1, 0.5, 4000);
 
-  // The sky light is what shade is painted with, so it is strong and blue.
-  scene.add(new THREE.HemisphereLight('#dcecff', '#a9b6ec', 1.6));
-  const sun = new THREE.DirectionalLight('#fff1d6', 2.1);
-  sun.position.copy(LEVEL_CENTRE).addScaledVector(SUN_DIRECTION, 1000);
-  sun.target.position.copy(LEVEL_CENTRE);
+  // The sky light is what shade is painted with, so it is strong. The colours come from the level.
+  const skylight = new THREE.HemisphereLight('#ffffff', '#ffffff', 1.6);
+  const sun = new THREE.DirectionalLight('#ffffff', 2.1);
   // One shadow map covers the whole level, so islands shade each other and the clouds below.
   sun.castShadow = true;
   sun.shadow.mapSize.set(4096, 4096);
   sun.shadow.normalBias = 1.2;
   sun.shadow.bias = -0.0003;
-  Object.assign(sun.shadow.camera, { left: -620, right: 620, top: 620, bottom: -620, near: 200, far: 1900 });
-  scene.add(sun, sun.target);
 
   const sky = buildSky();
+  const land = buildLand();
+  const beacon = buildBeacon();
   const glider = buildGlider();
-  const ringMeshes = buildRings();
-  const updraftMotes = buildUpdrafts();
+  scene.add(skylight, sun, sun.target, sky, land, beacon, glider);
+
+  // Everything that belongs to one level, so it can be cleared away for the next.
+  let stage = new THREE.Group();
+  let ringMeshes: THREE.Mesh[] = [];
+  let animateMotes = (_time: number) => {};
   let animateCourier = (_time: number) => {};
-  scene.add(sky, buildLand(), buildClouds(), buildMountains(), buildBeacon(), glider, updraftMotes.points, ...ringMeshes, build(prims.filter((p) => !p.hidden)));
+
+  /** Fits the shadow map round everything in the level, as the sun sees it. */
+  const fitShadows = () => {
+    const view = new THREE.Matrix4().lookAt(sun.position, sun.target.position, THREE.Object3D.DEFAULT_UP).setPosition(sun.position).invert();
+    const seen = new THREE.Box3();
+    const around = new THREE.Sphere();
+    const each = new THREE.Box3();
+    const cover = (pos: number[], radius: number) => seen.union(around.set(new THREE.Vector3(...pos).applyMatrix4(view), radius).getBoundingBox(each));
+    for (const p of prims) {
+      if (!p.hidden) cover(p.pos, p.kind === 'box' ? Math.hypot(...p.size) / 2 : p.kind === 'cone' ? Math.hypot(p.height / 2, p.rTop, p.rBottom) : p.radius);
+    }
+    for (const p of placements) cover(p.pos, p.scale * 2.5);
+    seen.expandByScalar(40);
+    Object.assign(sun.shadow.camera, { left: seen.min.x, right: seen.max.x, bottom: seen.min.y, top: seen.max.y, near: -seen.max.z, far: -seen.min.z });
+    sun.shadow.camera.updateProjectionMatrix();
+  };
 
   const resize = () => {
     renderer.setSize(innerWidth, innerHeight, false);
@@ -683,14 +702,47 @@ export function createScene(canvas: HTMLCanvasElement) {
   return {
     camera,
     glider,
-    /** Settles once the models are in the scene. */
-    loaded: Promise.all([
-      buildModels().then((town) => scene.add(town)),
-      buildCourier().then((courier) => {
-        glider.add(courier.model);
-        animateCourier = courier.animate;
-      }),
-    ]),
+    /** Settles once the courier is in the seat. */
+    loaded: buildCourier().then((courier) => {
+      glider.add(courier.model);
+      animateCourier = courier.animate;
+    }),
+    /** Swaps the scenery for the level now built in the world. Settles once its models are in. */
+    setLevel(level: Level) {
+      const mood = level.mood;
+      const { zenith, middle, horizon, sunColor, sunDirection } = sky.material.uniforms;
+      zenith.value.set(mood.zenith);
+      middle.value.set(mood.middle);
+      horizon.value.set(mood.horizon);
+      sunColor.value.set(mood.sun);
+      sunDirection.value.set(...mood.sunDirection).normalize();
+      // Far things fade into the colour of the sky at the horizon.
+      fog.color.set(mood.horizon);
+      skylight.color.set(mood.skylight);
+      skylight.groundColor.set(mood.bounce);
+      sun.color.set(mood.sunlight);
+      sun.target.position.set(...level.centre);
+      sun.position.copy(sun.target.position).addScaledVector(sunDirection.value, 1000);
+      fitShadows();
+      // The land is tinted towards the sky, as distant things are, so the islands stand out against it.
+      land.material.color.set(mood.land);
+      land.position.set(level.centre[0], LAND_LEVEL, level.centre[2]);
+      beacon.position.set(pad.x, pad.y + beacon.geometry.parameters.height / 2, pad.z);
+
+      scene.remove(stage);
+      stage.traverse((child) => {
+        if (!(child instanceof THREE.Mesh || child instanceof THREE.Points)) return;
+        child.geometry.dispose();
+        if (!shared.has(child.material)) child.material.dispose();
+      });
+      const built = (stage = new THREE.Group());
+      const motes = buildUpdrafts();
+      animateMotes = motes.animate;
+      ringMeshes = buildRings();
+      built.add(buildClouds(level), buildMountains(), motes.points, ...ringMeshes, build(prims.filter((p) => !p.hidden)));
+      scene.add(built);
+      return buildModels().then((town) => void built.add(town));
+    },
     /** Dims a ring once it has been flown through. */
     setRingHit(index: number, hit: boolean) {
       const ring = ringMeshes[index];
@@ -698,7 +750,7 @@ export function createScene(canvas: HTMLCanvasElement) {
       ring.children[0].visible = !hit;
     },
     render(time: number) {
-      updraftMotes.animate(time);
+      animateMotes(time);
       animateCourier(time);
       sky.position.copy(camera.position);
       renderer.render(scene, camera);

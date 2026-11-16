@@ -1,5 +1,7 @@
 import { expect, it } from 'vitest';
-import { briefing, speakers, thanks } from './story';
+import { speakers, valleyStory } from './story';
+
+const { briefing, thanks } = valleyStory;
 
 it('has the postmaster brief you and the keeper thank you', () => {
   expect(briefing.every((line) => line.who === 'postmaster')).toBe(true);
