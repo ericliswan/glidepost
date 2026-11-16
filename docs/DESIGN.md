@@ -51,6 +51,11 @@ Three sources, each with a different shape so they feel distinct:
 | **Boost rings** | Instant. Each ring gives a speed kick. Hitting the next ring inside the chain window raises a multiplier, so a clean line through the whole course is worth far more than its parts. | Rings sit on the low, tight line. |
 | **Wall-skimming** | Banked. Flying within a few metres of any surface charges the boost meter; closer and faster charges more. The meter is spent as thrust by holding boost. | Touching the surface is a crash. |
 
+A fourth thing moves the glider but is not a way to win: **wind streams**. A stream is a tube of
+moving air, drawn as pale motes blowing along it. Inside one the air itself carries the glider, at
+up to 110 km/h on top of its own speed, fading towards the edges and at both ends. Streams are how the secret ways are flown, and why a
+glider can get through a long tunnel without running out of speed.
+
 Rings do not fill the meter and skimming gives no instant speed. Rings reward precision *now*;
 skimming rewards nerve and lets you choose *when* to cash it in.
 
@@ -140,6 +145,25 @@ Rings in the gorge are 135 m apart and the line drops about 7 m in every 100. Cl
 than that and a full chain runs away: at 100 m apart the glider reached 260 km/h and the whole
 route was over in 28 seconds.
 
+## Secrets
+
+Things the briefing only hints at. None of them is needed to make a delivery.
+
+- **Lost letters.** Three on each route, hung in the air where a curious courier would look. Fly
+  through one to take it. A found letter stays found, through crashes and between visits, and the
+  result shows how many you carry. Land with all three and the recipient has one more thing to
+  say.
+- **The cave behind the waterfall** (valley). The falls hide a way straight through the rock,
+  lit by lanterns. A breeze picks you up at the far side and carries you round to the lighthouse.
+- **The Hollow** (gorge). A tunnel through the long crag east of the Needles. A draught blows
+  through it, and a gust on the far side runs down to the aqueduct, where it rejoins the ring line.
+- **Church bells.** Pass close to any steeple and its bell rings, once for each pass.
+- **Something in the sky.** It circles each map, slowly and a long way up. It does nothing.
+
+On each route one letter is behind the secret way and the other two ask for a detour. In the
+valley the first is just behind the post office, where Orso's hint points, so that finding it
+teaches that there are more.
+
 ## Look, sound and feel
 
 - A storybook illustration: flat cel shading with ink outlines, timber houses with bright roofs,
@@ -152,7 +176,8 @@ route was over in 28 seconds.
 - People talk in a dialogue box: a portrait, a name tag and a line that writes itself out. Space
   or a click turns the page, and R skips the talk.
 - Camera sits behind the glider, widens its field of view with speed, and shakes slightly under boost.
-- Wind noise rises with speed. Rings, boost, landing and crashing each have their own sound.
+- Wind noise rises with speed. Rings, boost, landing, crashing, letters and bells each have their
+  own sound.
 - All sound is synthesised; there are no audio files to download.
 
 ## Tech

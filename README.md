@@ -10,7 +10,7 @@ so every metre of height and every bit of speed has to come from somewhere. Gett
 Getting there fast is the game.
 
 This is a playable prototype: two deliveries, each with a fast way and a safe way to fly it, a
-timer and a best time.
+timer, a best time, and a few things that are not on the map.
 
 | | Route | Parcel | The fast way |
 | --- | --- | --- | --- |
@@ -57,6 +57,18 @@ In the gorge the ring line threads the Needles, drops into a canyon with a river
 floor, goes under two bridges and an aqueduct, down the high street of a town and under a rock
 arch to the keep. The safe way climbs the warm air off the baker's chimney in the Needles and
 stays high over the rim.
+
+## Off the route
+
+Three letters went astray on each route, years ago, and they are still out there. Fly through one
+to pick it up. They are kept between flights, and whoever gets the parcel has something to say if
+you turn up with all three. Orso drops a hint about where to start looking.
+
+Some of them are down a **wind stream**: a river of pale motes in the air that carries the glider
+along with it. One runs out of a cave nobody talks about, and another through a rock that the old
+couriers called hollow.
+
+Pass close to a church steeple and the bell rings. And look up now and then.
 
 ## How it is built
 
