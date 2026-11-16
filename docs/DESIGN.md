@@ -72,6 +72,7 @@ higher-skill option.
 | Airbrake | `Shift` | Right button |
 | Launch | `Space` | Click |
 | Restart | `R` | |
+| Pause | `Esc` | |
 
 The mouse is **aim-style**: moving it sets where you want the nose to go, and the glider carves
 towards that point at its own turn rate. A flick does not snap the glider around; it commits it to
@@ -79,6 +80,9 @@ a turn. Bank is automatic and visual.
 
 ## A delivery
 
+0. **Front desk.** The game opens at the post office's front desk, looking over the route from
+   behind the launch deck. Each route hangs there as a parcel tag with its best time and the lost
+   letters found on it. Picking a tag loads the route.
 1. **Briefing.** On the launch deck, Postmaster Orso tells you who the parcel is for and how to
    get there. It plays once; a retry goes straight to the launch.
 2. **Launch.** You start on the launch deck of the post office with the parcel already on board.
@@ -89,7 +93,12 @@ a turn. Bank is automatic and visual.
    under the limit is a *perfect landing*.
 5. **Thanks.** Marigold, the lighthouse keeper, thanks you, and remarks on how gently you landed
    and how quickly you came.
-6. **Result.** Your time, and your best time for the route (kept locally).
+6. **Result.** A receipt: your time, your best time for the route (kept locally), how you
+   landed and how many letters you have. From there, fly it again or go back to the front desk.
+
+`Esc` stops the clock at any point and offers the same two ways out, as well as the settings:
+sound level, mouse speed, swapping dive and pull up, and forgetting every time and letter.
+Leaving the tab or losing the mouse pauses too.
 
 Failure states, all followed by an instant return to the launch deck:
 
@@ -173,8 +182,12 @@ teaches that there are more.
   of the mountains fade into it while the peaks stand clear.
 - The glider is a paper dart with a seat: the courier rides it with the parcel strapped on behind.
 - Streets are dressed to feel lived in: bunting, lamps, market stalls, barrels and crates.
-- People talk in a dialogue box: a portrait, a name tag and a line that writes itself out. Space
-  or a click turns the page, and R skips the talk.
+- Everything on screen that is not the world is post. Routes are parcel tags on string, the
+  distance to go is a tag too, messages come as telegram tape, a ring chain is a rubber stamp,
+  the boost meter is an airmail stripe and a delivery ends with a torn-off receipt. Two
+  typefaces: Young Serif for names and Courier Prime for anything typed.
+- People talk on a postcard: their portrait is the stamp, and the line writes itself out on the
+  ruled side. Space or a click turns the page, and R skips the talk.
 - Camera sits behind the glider, widens its field of view with speed, and shakes slightly under boost.
 - Wind noise rises with speed. Rings, boost, landing, crashing, letters and bells each have their
   own sound.
@@ -209,7 +222,7 @@ In scope:
 - A ring line with chaining
 - Wall-skim boost charging and the boost meter
 - One timed delivery from the post office to the lighthouse, with landing
-- A second, longer delivery down the Amber Gorge, picked with the number keys
+- A second, longer delivery down the Amber Gorge, picked off its tag at the front desk
 - A briefing from the postmaster before the flight and a thank-you from the keeper after it
 - HUD: speed, altitude, boost meter, timer, ring chain, distance to destination, best time
 - Chase camera with speed-based field of view
