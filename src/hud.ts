@@ -13,6 +13,7 @@ export function createHud() {
   const speed = el('speed');
   const altitude = el('altitude');
   const distance = el('distance');
+  const destination = el('destination');
   const boostFill = el('boost-fill');
   const boost = boostFill.closest('.boost')!;
   let shown = '';
@@ -21,6 +22,11 @@ export function createHud() {
     /** Sets the centre message. Lines break on "\n"; a <strong> is shown as a heading. */
     message(html: string) {
       if (html !== shown) message.innerHTML = shown = html;
+    },
+
+    /** Names where the parcel is going, such as "to the lighthouse". */
+    destination(text: string) {
+      destination.textContent = text;
     },
 
     update(game: Game, bestTime: number | null) {
