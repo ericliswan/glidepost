@@ -1,3 +1,4 @@
+import { gorge } from './levels/gorge';
 import { valley } from './levels/valley';
 import type { Line } from './story';
 import { clearWorld, type Vec3 } from './world';
@@ -37,7 +38,7 @@ export interface Level {
   thanks(time: number, perfect: boolean): Line[];
 }
 
-export const levels: Level[] = [valley];
+export const levels: Level[] = [valley, gorge];
 
 /** Builds a level in the world, in place of whichever was there. */
 export function loadLevel(level: Level) {

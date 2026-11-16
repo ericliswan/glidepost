@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { config } from './config';
 import type { FlightInput } from './flight';
 import { createGame, launch, step, type Game, type GameEvent } from './game';
@@ -6,7 +6,8 @@ import { levels, loadLevel } from './levels';
 import { cliffFace } from './levels/valley';
 import { distanceToWorld, islands, liftAt, pad, peaks, placements, rings, spawn, updrafts } from './world';
 
-loadLevel(levels[0]);
+// The valley is what the tests below are written against. Every level gets the checks at the end.
+beforeAll(() => loadLevel(levels[0]));
 
 const DT = 1 / 120;
 const HANDS_OFF: FlightInput = { pitch: 0, turn: 0, boost: false, brake: false };
@@ -52,27 +53,6 @@ describe('level', () => {
     expect(distanceToWorld(pad.x, pad.y + 3, pad.z)).toBeCloseTo(3);
   });
 
-  it('starts the glider clear of the launch deck', () => {
-    expect(distanceToWorld(spawn.x, spawn.y, spawn.z)).toBeGreaterThan(config.glider.radius * 2);
-  });
-
-  it('leaves room to fly through every ring', () => {
-    for (const ring of rings) {
-      expect(distanceToWorld(...ring.pos)).toBeGreaterThan(config.rings.radius + config.glider.radius);
-    }
-  });
-
-  it('keeps the whole ring line clear, through the street, the tunnel and the market', () => {
-    // From the first ring on: the glider starts on the deck, which is nearer than that.
-    const line = [...rings.map((ring) => ring.pos), [pad.x, pad.y + 12, pad.z]];
-    for (let i = 1; i < line.length; i++) {
-      for (let t = 0; t <= 1; t += 0.02) {
-        const [x, y, z] = line[i].map((to, axis) => line[i - 1][axis] + (to - line[i - 1][axis]) * t);
-        expect(distanceToWorld(x, y, z), `leg ${i} at ${t.toFixed(2)}`).toBeGreaterThan(7);
-      }
-    }
-  });
-
   it('gives a model the shape of its outline, not of a box round it', () => {
     const home = placements.find((p) => p.name.startsWith('building_home_A'))!;
     const [x, ground, z] = home.pos;
@@ -81,16 +61,6 @@ describe('level', () => {
     const sideX = x + Math.cos(home.rotY) * 4;
     const sideZ = z - Math.sin(home.rotY) * 4;
     expect(distanceToWorld(sideX, ground + 12, sideZ)).toBeGreaterThan(1);
-  });
-
-  it('stands the mountains clear of every island', () => {
-    for (const island of islands) {
-      for (const peak of peaks) {
-        const up = (island.top - (peak.pos[1] - peak.height / 2)) / peak.height;
-        const gap = Math.hypot(island.x - peak.pos[0], island.z - peak.pos[2]) - peak.rBottom * (1 - up) - island.r;
-        expect(gap).toBeGreaterThan(20);
-      }
-    }
   });
 
   it('has lift inside updrafts and none outside', () => {
@@ -184,8 +154,48 @@ describe('routes', () => {
     expect(game.glider.y).toBeGreaterThan(pad.y + 20);
     expect(game.time).toBeLessThan(60);
   });
+});
 
-  it('is much faster down the ring line, chaining every ring', () => {
+// How long the ring line may take in each level, in seconds.
+const PAR: Record<string, number> = { valley: 25, gorge: 55 };
+
+describe.each(levels)('$name', (level) => {
+  beforeAll(() => loadLevel(level));
+
+  it('starts the glider clear of the launch deck', () => {
+    expect(distanceToWorld(spawn.x, spawn.y, spawn.z)).toBeGreaterThan(config.glider.radius * 2);
+  });
+
+  it('leaves room to fly through every ring', () => {
+    for (const ring of rings) {
+      expect(distanceToWorld(...ring.pos)).toBeGreaterThan(config.rings.radius + config.glider.radius);
+    }
+  });
+
+  it('keeps the whole ring line clear', () => {
+    // From the first ring on: the glider starts on the deck, which is nearer than that.
+    const line = [...rings.map((ring) => ring.pos), [pad.x, pad.y + 12, pad.z]];
+    for (let i = 1; i < line.length; i++) {
+      for (let t = 0; t <= 1; t += 0.02) {
+        const [x, y, z] = line[i].map((to, axis) => line[i - 1][axis] + (to - line[i - 1][axis]) * t);
+        expect(distanceToWorld(x, y, z), `leg ${i} at ${t.toFixed(2)}`).toBeGreaterThan(7);
+      }
+    }
+  });
+
+  it('stands the mountains clear of every island and of the route', () => {
+    const gap = (x: number, y: number, z: number, peak: (typeof peaks)[number]) => {
+      const up = (y - (peak.pos[1] - peak.height / 2)) / peak.height;
+      return Math.hypot(x - peak.pos[0], z - peak.pos[2]) - peak.rBottom * (1 - up);
+    };
+    for (const peak of peaks) {
+      for (const island of islands) expect(gap(island.x, island.top, island.z, peak) - island.r).toBeGreaterThan(20);
+      for (const ring of rings) expect(gap(...ring.pos, peak)).toBeGreaterThan(100);
+      expect(gap(pad.x, pad.y, pad.z, peak)).toBeGreaterThan(100);
+    }
+  });
+
+  it('can be flown down the ring line, chaining every ring', () => {
     const game = createGame();
     launch(game);
     let next = 0;
@@ -202,9 +212,45 @@ describe('routes', () => {
     expect(game.phase).toBe('flying');
     expect(game.ringsHit).not.toContain(false);
     expect(game.chain).toBe(rings.length);
-    expect(game.time).toBeLessThan(25);
+    expect(game.time).toBeLessThan(PAR[level.id]);
     // Fast, but not so fast the rings stop being flyable.
     expect(topSpeed).toBeGreaterThan(50);
     expect(topSpeed).toBeLessThan(75);
   });
+});
+
+describe('the gorge, the long way', () => {
+  beforeAll(() => loadLevel(levels[1]));
+
+  it('is too far to glide straight to the keep', () => {
+    const away = 5000;
+    const game = flyingAt({ x: spawn.x + away });
+    const short = () => Math.hypot(game.glider.x - away - pad.x, game.glider.z - pad.z) > pad.radius;
+    while (game.phase === 'flying' && short()) step(game, steer(game, pad.x + away, pad.z, BEST_GLIDE), DT);
+    expect(game.glider.y).toBeLessThan(pad.y);
+  }, 20_000);
+
+  it('reaches the keep over the rim, by climbing the warm air off the baker\'s chimney', () => {
+    const game = createGame();
+    launch(game);
+    // The baker's chimney in the Needles: the first column built.
+    const u = updrafts[0];
+    const fromColumn = () => Math.hypot(game.glider.x - u.x, game.glider.z - u.z);
+
+    // Out over the gate first, above the bunting, then right towards the smoke.
+    const gate = rings[0].pos;
+    while (game.phase === 'flying' && game.glider.z > gate[2]) step(game, steer(game, gate[0], gate[2] - 20, BEST_GLIDE), DT);
+    while (game.phase === 'flying' && fromColumn() > 10) step(game, steer(game, u.x, u.z, BEST_GLIDE), DT);
+    while (game.phase === 'flying' && game.glider.y < 285) {
+      const input = steer(game, u.x, u.z, -0.2);
+      if (fromColumn() < 12) input.turn = 1;
+      step(game, input, DT);
+    }
+    while (game.phase === 'flying' && !overPad(game)) step(game, steer(game, pad.x, pad.z, BEST_GLIDE), DT);
+
+    expect(game.phase).toBe('flying');
+    expect(game.glider.y).toBeGreaterThan(pad.y + 20);
+    // Slow enough that the warden can tell which way you came.
+    expect(game.time).toBeGreaterThan(60);
+  }, 20_000);
 });
