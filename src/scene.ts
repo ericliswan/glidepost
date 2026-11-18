@@ -93,17 +93,14 @@ function roughen(geometry: THREE.BufferGeometry, prim: Prim) {
 
 /** The painted surface of a primitive and its ink outline, both already in place in the world. */
 function shape(prim: Prim) {
-  const rocky = [palette.rock, palette.cliff, palette.sandstone].includes(prim.color);
+  const rocky = [palette.rock, palette.cliff, palette.sandstone, palette.basalt].includes(prim.color);
   const segments = (size: number) => (rocky ? Math.ceil(size / 13) : 1);
   let paint: THREE.BufferGeometry =
     prim.kind === 'box'
       ? new THREE.BoxGeometry(...prim.size, ...prim.size.map(segments))
       : prim.kind === 'cone'
         ? new THREE.CylinderGeometry(prim.rTop, prim.rBottom, prim.height, rocky ? prim.sides * 2 : prim.sides, rocky ? Math.max(4, segments(prim.height)) : 1)
-        : prim.pos[1] < 0
-          ? // The woods far below are only ever seen through mist, so they get fewer facets.
-            new THREE.SphereGeometry(prim.radius, 10, 7)
-          : new THREE.SphereGeometry(prim.radius, prim.radius < 1 ? 6 : 14, prim.radius < 1 ? 4 : 10);
+        : new THREE.SphereGeometry(prim.radius, prim.radius < 1 ? 6 : 14, prim.radius < 1 ? 4 : 10);
   if (rocky) roughen(paint, prim);
   paint = paint.toNonIndexed();
   paint.deleteAttribute('uv');
@@ -268,17 +265,30 @@ async function buildModels() {
 
   const paint: THREE.BufferGeometry[] = [];
   const ink: THREE.BufferGeometry[] = [];
+  const far = new Map<string, THREE.Matrix4[]>();
   const turn = new THREE.Quaternion();
-  const place = new THREE.Matrix4();
-  for (const { name, pos, rotY, scale } of placements) {
-    place.compose(new THREE.Vector3(...pos), turn.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, rotY), new THREE.Vector3(scale, scale, scale));
+  for (const { name, pos, rotY, scale, far: isFar } of placements) {
+    const place = new THREE.Matrix4().compose(new THREE.Vector3(...pos), turn.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, rotY), new THREE.Vector3(scale, scale, scale));
+    if (isFar) {
+      far.set(name, [...(far.get(name) ?? []), place]);
+      continue;
+    }
     const template = templates.get(name)!;
     paint.push(template.paint.clone().applyMatrix4(place));
     ink.push(template.ink.clone().applyMatrix4(place));
   }
   const painted = new THREE.Mesh(mergeGeometries(paint), modelMaterial);
   painted.castShadow = painted.receiveShadow = true;
-  return new THREE.Group().add(painted, new THREE.Mesh(mergeGeometries(ink), inkMaterial));
+  const group = new THREE.Group().add(painted, new THREE.Mesh(mergeGeometries(ink), inkMaterial));
+  // Far scenery is instanced, as there is a lot of it, and has no outline: the ink shader expects merged geometry.
+  for (const [name, places] of far) {
+    // A copy, since clearing the level disposes of its geometry and the template is kept.
+    const mesh = new THREE.InstancedMesh(templates.get(name)!.paint.clone(), modelMaterial, places.length);
+    places.forEach((place, i) => mesh.setMatrixAt(i, place));
+    mesh.computeBoundingSphere();
+    group.add(mesh);
+  }
+  return group;
 }
 
 /** The courier, sitting. Returns the model and a function that moves it to a moment in time. */
@@ -812,6 +822,7 @@ export function createScene(canvas: HTMLCanvasElement) {
       stage.traverse((child) => {
         if (!(child instanceof THREE.Mesh || child instanceof THREE.Points)) return;
         child.geometry.dispose();
+        if (child instanceof THREE.InstancedMesh) child.dispose();
         if (!shared.has(child.material)) child.material.dispose();
       });
       const built = (stage = new THREE.Group());
