@@ -25,6 +25,8 @@ timer, a best time, and a few things that are not on the map.
 | 1 | **The valley** | For Marigold, the lighthouse keeper | Through the town: about 700 m, under 25 seconds. |
 | 2 | **The Amber Gorge** | Honey cake for Warden Bram at Amberwatch Keep | Down the canyon: about 2 km, under 50 seconds. |
 
+![Over the rim of the Amber Gorge: a town on the clifftop, banded sandstone spires and woods far below](docs/gorge.png)
+
 ## Play
 
 Play the [published build](https://ericliswan.github.io/glidepost/), or run it yourself:
