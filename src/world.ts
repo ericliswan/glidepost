@@ -84,6 +84,8 @@ export const palette = {
   pad: '#ffc94f',
   lamp: '#fff2b0',
   wood: '#c99862',
+  canopy: '#4f9e5a',
+  gold: '#cdbd52',
 };
 const flowers = ['#ffffff', '#ffd84d', '#ff8fb0', '#f2615a', '#b48cf0'];
 
@@ -127,6 +129,9 @@ export function seeded(seed: number) {
   return () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
 }
 let random = seeded(7);
+// The trimmings (vines, the forest below, giant trees, bridges) draw from their own sequence, so
+// adding them does not move anything placed with the one above.
+let detail = seeded(31);
 
 /** A random spot on a round patch of ground. */
 function scatter(x: number, z: number, r: number) {
@@ -149,6 +154,7 @@ export function clearWorld() {
   for (const list of [prims, placements, updrafts, streams, letters, bells, islands, peaks, solids, rings]) list.length = 0;
   ways = [];
   random = seeded(7);
+  detail = seeded(31);
 }
 
 /** Lays the line from the launch deck, through each ring, to the landing pad. */
@@ -187,6 +193,22 @@ export function fromRoute(x: number, z: number) {
   );
 }
 
+/** How far a point is from the nearest line that gets flown along, in all three directions. */
+export function fromWays(x: number, y: number, z: number) {
+  let best = Infinity;
+  for (const line of ways) {
+    for (let i = 1; i < line.length; i++) {
+      const [ax, ay, az] = line[i - 1];
+      const dx = line[i][0] - ax;
+      const dy = line[i][1] - ay;
+      const dz = line[i][2] - az;
+      const t = clamp01(((x - ax) * dx + (y - ay) * dy + (z - az) * dz) / (dx * dx + dy * dy + dz * dz));
+      best = Math.min(best, Math.hypot(x - ax - dx * t, y - ay - dy * t, z - az - dz * t));
+    }
+  }
+  return best;
+}
+
 /** True if the ring line passes low over this spot, so nothing tall should grow there. */
 function underRoute(x: number, ground: number, z: number) {
   return ways.some((line) =>
@@ -222,8 +244,9 @@ export function ball(x: number, y: number, z: number, radius: number, color: str
 const MODEL_SCALE = 14;
 
 /** An imported model, with its door facing +Z before it is turned by rotY. */
-export function model(name: ModelName, x: number, ground: number, z: number, rotY = 0, scale = MODEL_SCALE) {
+export function model(name: ModelName, x: number, ground: number, z: number, rotY = 0, scale = MODEL_SCALE, solid = true) {
   placements.push({ name, pos: [x, ground, z], rotY, scale });
+  if (!solid) return;
   const sin = Math.sin(rotY);
   const cos = Math.cos(rotY);
   const boxes = models[name].boxes;
@@ -274,6 +297,13 @@ export function island(x: number, top: number, z: number, r: number, wreath = tr
   cone(x, top - 4, z, r * 0.93, r, 4, palette.grass, 18);
   cone(x, top - 4 - r * 1.1, z, r * 0.12, r * 0.93, r * 1.1, palette.rock, 9, x);
   meadow(x, top, z, r);
+  // Roots and creepers hanging off the rim, too thin to hit.
+  for (let i = 0; i < r / 3; i++) {
+    const angle = detail() * Math.PI * 2;
+    const length = 4 + detail() * r * 0.5;
+    const out = r * (0.82 + detail() * 0.1);
+    cone(x + Math.cos(angle) * out, top - 3 - length, z + Math.sin(angle) * out, 0.15, 0.4, length, detail() < 0.6 ? palette.moss : palette.timber, 5, 0, false);
+  }
 }
 
 export function pine(x: number, ground: number, z: number, s = 1) {
@@ -283,11 +313,11 @@ export function pine(x: number, ground: number, z: number, s = 1) {
   cone(x, ground + 7.2 * s, z, 1.7 * s, 0, 3.4 * s, palette.pine, 10);
 }
 
-export function oak(x: number, ground: number, z: number, s = 1, color = palette.leaf) {
-  cone(x, ground, z, 0.7 * s, 0.5 * s, 3.4 * s, palette.trunk, 8);
-  ball(x, ground + 5.6 * s, z, 3.2 * s, color);
-  ball(x + 1.9 * s, ground + 4.6 * s, z + 0.8 * s, 2.2 * s, color);
-  ball(x - 1.7 * s, ground + 4.9 * s, z - 1.0 * s, 2.4 * s, color);
+export function oak(x: number, ground: number, z: number, s = 1, color = palette.leaf, solid = true) {
+  cone(x, ground, z, 0.7 * s, 0.5 * s, 3.4 * s, palette.trunk, 8, 0, solid);
+  ball(x, ground + 5.6 * s, z, 3.2 * s, color, solid);
+  ball(x + 1.9 * s, ground + 4.6 * s, z + 0.8 * s, 2.2 * s, color, solid);
+  ball(x - 1.7 * s, ground + 4.9 * s, z - 1.0 * s, 2.4 * s, color, solid);
 }
 
 export function bush(x: number, ground: number, z: number, s = 1) {
@@ -438,6 +468,134 @@ export function farIslands(cx: number, cz: number, rx: number, rz: number, count
     const top = low + random() * (high - low);
     if (distanceToWorld(x, top, z) < r + 30 || underRoute(x, top - 20, z)) continue;
     hamlet(x, top, z, r, big ? [SPIRES[i % 6], HOMES[i % 6], HOMES[(i + 1) % 6], SPIRES[(i + 3) % 6]] : [i % 3 ? HOMES[i % 6] : SPIRES[i % 6]]);
+  }
+}
+
+// --- The world below, and what hangs between the islands -------------------------------------------
+
+/** The roof of the woods far below the islands, under the last of the cloud. */
+export const LOWLAND = -90;
+
+/** Woods with a few big old roofs among them, over the land under an oval. None of it can be hit. */
+export function lowland(cx: number, cz: number, rx: number, rz: number, count: number) {
+  const greens = [palette.canopy, palette.pine, palette.leaf, palette.grassDark, palette.canopy, palette.gold];
+  for (let i = 0; i < count; i++) {
+    const angle = detail() * Math.PI * 2;
+    const out = Math.sqrt(detail());
+    const x = cx + Math.cos(angle) * rx * out;
+    const z = cz + Math.sin(angle) * rz * out;
+    const ground = LOWLAND - 60 - detail() * 30;
+    if (i % 14 === 0) model(i % 28 ? HOMES[i % 6] : SPIRES[i % 6], x, ground + 30, z, detail() * 6, 34, false);
+    else oak(x, ground, z, 6 + detail() * 4, greens[i % greens.length], false);
+  }
+}
+
+/** A tree as tall as a tower: its trunk rises out of the woods and its crown, `r` across, is at `top`. */
+function giant(x: number, top: number, z: number, r: number) {
+  cone(x, LOWLAND - 60, z, r * 0.36, r * 0.2, top - LOWLAND + 60 - r * 0.3, palette.trunk, 10);
+  for (const [dx, dy, dz, s] of crown(r)) ball(x + dx, top + dy, z + dz, s, palette.canopy);
+  // Moss hanging off the crown, too thin to hit.
+  for (let i = 0; i < 8; i++) {
+    const angle = detail() * Math.PI * 2;
+    const length = 6 + detail() * r * 0.8;
+    cone(x + Math.cos(angle) * r * 0.75, top - r * 0.3 - length, z + Math.sin(angle) * r * 0.75, 0.2, 0.5, length, palette.moss, 5, 0, false);
+  }
+}
+
+/** The balls of a giant's crown, as offsets from its middle and radii. */
+const crown = (r: number): [number, number, number, number][] => [
+  [0, 0, 0, r * 0.75],
+  [r * 0.6, -r * 0.2, r * 0.3, r * 0.6],
+  [-r * 0.6, -r * 0.1, -r * 0.3, r * 0.62],
+  [r * 0.1, -r * 0.25, -r * 0.65, r * 0.55],
+  [-r * 0.2, -r * 0.25, r * 0.65, r * 0.55],
+  [0, r * 0.45, 0, r * 0.5],
+  // A lower bough, well down the trunk.
+  [r * 0.55, -r * 1.7, -r * 0.2, r * 0.42],
+  [-r * 0.5, -r * 2.4, r * 0.3, r * 0.38],
+];
+
+/**
+ * Giant trees standing beside the ways, their crowns a little above them. Each keeps well clear
+ * of every way, letter, bell and updraft, and of any `keepClear` point.
+ */
+export function giants(count: number, keepClear: Vec3[] = []) {
+  const clear = [...letters, ...bells, ...keepClear];
+  for (let tries = 0, placed = 0; placed < count && tries < 600; tries++) {
+    const line = ways[Math.floor(detail() * ways.length)];
+    const i = 1 + Math.floor(detail() * (line.length - 1));
+    const [ax, ay, az] = line[i - 1];
+    const [bx, by, bz] = line[i];
+    const t = detail();
+    const along = Math.hypot(bx - ax, bz - az) || 1;
+    const side = (45 + detail() * 60) * (detail() < 0.5 ? -1 : 1);
+    const x = ax + (bx - ax) * t - ((bz - az) / along) * side;
+    const z = az + (bz - az) * t + ((bx - ax) / along) * side;
+    const top = ay + (by - ay) * t + 35 + detail() * 30;
+    const r = 24 + detail() * 10;
+    const balls = crown(r).map(([dx, dy, dz, s]) => [x + dx, top + dy, z + dz, s]);
+    if (fromRoute(x, z) < r * 0.4 + 25) continue;
+    if (balls.some(([bx, by, bz, s]) => fromWays(bx, by, bz) < s + 18 || distanceToWorld(bx, by, bz) < s * 0.5)) continue;
+    if (clear.some(([px, py, pz]) => Math.hypot(px - x, Math.max(0, py - top - r), pz - z) < r + 20)) continue;
+    if (updrafts.some((u) => Math.hypot(u.x - x, u.z - z) < u.radius + r + 15)) continue;
+    giant(x, top, z, r);
+    placed++;
+  }
+}
+
+/** Rope bridges between neighbouring islands at about the same height, where no way runs. */
+export function bridges() {
+  const links = new Map<object, number>();
+  for (const a of islands) {
+    for (const b of islands) {
+      if (a === b || (links.get(a) ?? 0) >= 2 || (links.get(b) ?? 0) >= 2) continue;
+      const across = Math.hypot(b.x - a.x, b.z - a.z);
+      const gap = across - (a.r + b.r) * 0.8;
+      if (a.x > b.x || gap < 12 || gap > 110 || Math.abs(a.top - b.top) > 25) continue;
+      const ux = (b.x - a.x) / across;
+      const uz = (b.z - a.z) / across;
+      const from: Vec3 = [a.x + ux * a.r * 0.8, a.top, a.z + uz * a.r * 0.8];
+      const to: Vec3 = [b.x - ux * b.r * 0.8, b.top, b.z - uz * b.r * 0.8];
+      const sag = gap * 0.12;
+      const at = (t: number): Vec3 => [from[0] + (to[0] - from[0]) * t, from[1] + (to[1] - from[1]) * t - sag * 4 * t * (1 - t), from[2] + (to[2] - from[2]) * t];
+      const steps = Math.ceil(gap / 2);
+      const points = Array.from({ length: steps + 1 }, (_, i) => at(i / steps));
+      // The ends stand on the islands themselves, so only the span between is checked for rock.
+      if (points.some(([x, y, z], i) => fromWays(x, y, z) < 16 || (i > steps * 0.15 && i < steps * 0.85 && distanceToWorld(x, y + 1, z) < 2))) continue;
+      const heading = facing(a.x, a.z, b.x, b.z);
+      for (const [x, y, z] of points) {
+        box(x, y - 0.3, z, 3.4, 0.3, 1.4, palette.wood, heading, false);
+        for (const s of [-1.6, 1.6]) box(x + uz * s, y + 1.2, z - ux * s, 0.15, 0.15, 2.1, palette.timber, heading, false);
+      }
+      for (const [x, y, z] of [from, to]) for (const s of [-1.6, 1.6]) cone(x + uz * s, y - 0.3, z - ux * s, 0.2, 0.2, 2, palette.timber, 6, 0, false);
+      links.set(a, (links.get(a) ?? 0) + 1);
+      links.set(b, (links.get(b) ?? 0) + 1);
+    }
+  }
+}
+
+/** A stone channel of water on piers that stand in the woods far below. */
+export function aqueduct(from: Vec3, to: Vec3) {
+  const length = Math.hypot(to[0] - from[0], to[2] - from[2]);
+  const heading = facing(from[0], from[2], to[0], to[2]);
+  const spans = Math.round(length / 26);
+  const step = length / spans;
+  for (let i = 0; i <= spans; i++) {
+    const t = i / spans;
+    const [x, y, z] = from.map((f, axis) => f + (to[axis] - f) * t);
+    box(x, LOWLAND - 60, z, 8, y - LOWLAND + 54, 8, palette.sandstone, heading);
+    // Ties between the piers lower down, so it stands as a frame.
+    if (i < spans) for (const drop of [70, 150]) {
+      const [mx, , mz] = from.map((f, axis) => f + (to[axis] - f) * (t + 0.5 / spans));
+      box(mx, y - drop, mz, 5, 4, step, palette.sandstone, heading, false);
+    }
+    if (i === spans) break;
+    const [mx, my, mz] = from.map((f, axis) => f + (to[axis] - f) * (t + 0.5 / spans));
+    box(mx, my - 6, mz, 7, 6, step, palette.wall, heading);
+    box(mx, my, mz, 4, 0.2, step, palette.water, heading, false);
+    // Under each span an arch, as a lintel stepping down to the piers.
+    box(mx, my - 9, mz, 7, 3, step - 10, palette.wall, heading, false);
+    box(mx, my - 11, mz, 7, 2, step - 16, palette.wall, heading, false);
   }
 }
 

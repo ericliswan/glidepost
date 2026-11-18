@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { config } from './config';
 import type { Level } from './levels';
-import { islands, letters, pad, palette, peaks, placements, prims, rings, seeded, streams, updrafts, type Prim } from './world';
+import { LOWLAND, islands, letters, pad, palette, peaks, placements, prims, rings, seeded, streams, updrafts, type Prim } from './world';
 
 // Everything you can see. Builds meshes from the level's primitives and models, and owns the
 // renderer.
@@ -11,7 +11,7 @@ import { islands, letters, pad, palette, peaks, placements, prims, rings, seeded
 // every solid thing, heaped white clouds, and painted countryside far below.
 
 const INK = '#5b3f4d';
-const LAND_LEVEL = -420;
+const LAND_LEVEL = LOWLAND - 90;
 
 /** Repeatable 0 to 1 noise from a position, so vertices that share a corner move together. */
 function noise(x: number, y: number, z: number) {
@@ -100,7 +100,10 @@ function shape(prim: Prim) {
       ? new THREE.BoxGeometry(...prim.size, ...prim.size.map(segments))
       : prim.kind === 'cone'
         ? new THREE.CylinderGeometry(prim.rTop, prim.rBottom, prim.height, rocky ? prim.sides * 2 : prim.sides, rocky ? Math.max(4, segments(prim.height)) : 1)
-        : new THREE.SphereGeometry(prim.radius, prim.radius < 1 ? 6 : 14, prim.radius < 1 ? 4 : 10);
+        : prim.pos[1] < 0
+          ? // The woods far below are only ever seen through mist, so they get fewer facets.
+            new THREE.SphereGeometry(prim.radius, 10, 7)
+          : new THREE.SphereGeometry(prim.radius, prim.radius < 1 ? 6 : 14, prim.radius < 1 ? 4 : 10);
   if (rocky) roughen(paint, prim);
   paint = paint.toNonIndexed();
   paint.deleteAttribute('uv');
@@ -461,14 +464,12 @@ function buildClouds(level: Level) {
     }
   };
 
-  // A broken layer of low cloud with the land showing through the gaps. The tops are at the
-  // height where the game calls you lost.
-  for (let i = 0; i < (110 * wide * long) / (620 * 820); i++) {
+  // Wisps of low cloud over the woods, at about the height where the game calls you lost.
+  for (let i = 0; i < (50 * wide * long) / (620 * 820); i++) {
     const angle = random() * Math.PI * 2;
     const reach = Math.sqrt(random());
-    const size = 40 + random() * 60;
-    // Spread over the valley floor, out to the feet of the mountains.
-    heap(near, cx + Math.cos(angle) * reach * wide, config.world.cloudLevel - size * 0.2, cz + Math.sin(angle) * reach * long, size, 0.2);
+    const size = 25 + random() * 35;
+    heap(near, cx + Math.cos(angle) * reach * wide, config.world.cloudLevel - 10 - random() * 30, cz + Math.sin(angle) * reach * long, size, 0.18);
   }
 
   // Each island rides on a wreath of cloud. You can fly through it, but there is rock inside.
@@ -760,9 +761,10 @@ export function createScene(canvas: HTMLCanvasElement) {
     const each = new THREE.Box3();
     const cover = (pos: number[], radius: number) => seen.union(around.set(new THREE.Vector3(...pos).applyMatrix4(view), radius).getBoundingBox(each));
     for (const p of prims) {
-      if (!p.hidden) cover(p.pos, p.kind === 'box' ? Math.hypot(...p.size) / 2 : p.kind === 'cone' ? Math.hypot(p.height / 2, p.rTop, p.rBottom) : p.radius);
+      // The woods far below are left out, or the shadows would have to stretch over them too.
+      if (!p.hidden && p.pos[1] > 0) cover(p.pos, p.kind === 'box' ? Math.hypot(...p.size) / 2 : p.kind === 'cone' ? Math.hypot(p.height / 2, p.rTop, p.rBottom) : p.radius);
     }
-    for (const p of placements) cover(p.pos, p.scale * 2.5);
+    for (const p of placements) if (p.pos[1] > 0) cover(p.pos, p.scale * 2.5);
     seen.expandByScalar(40);
     Object.assign(sun.shadow.camera, { left: seen.min.x, right: seen.max.x, bottom: seen.min.y, top: seen.max.y, near: -seen.max.z, far: -seen.min.z });
     sun.shadow.camera.updateProjectionMatrix();
