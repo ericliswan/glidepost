@@ -89,6 +89,8 @@ export const palette = {
   canopy: '#4f9e5a',
   gold: '#cdbd52',
   basalt: '#8c939a',
+  rust: '#b8623e',
+  sand: '#eab07e',
 };
 const flowers = ['#ffffff', '#ffd84d', '#ff8fb0', '#f2615a', '#b48cf0'];
 
@@ -300,7 +302,11 @@ export function island(x: number, top: number, z: number, r: number, wreath = tr
   cone(x, top - 4, z, r * 0.93, r, 4, palette.grass, 18);
   cone(x, top - 4 - r * 1.1, z, r * 0.12, r * 0.93, r * 1.1, palette.rock, 9, x);
   meadow(x, top, z, r);
-  // Roots and creepers hanging off the rim, too thin to hit.
+  creepers(x, top, z, r);
+}
+
+/** Roots and creepers hanging off the rim of a top `r` across, too thin to hit. */
+export function creepers(x: number, top: number, z: number, r: number) {
   for (let i = 0; i < r / 3; i++) {
     const angle = detail() * Math.PI * 2;
     const length = 4 + detail() * r * 0.5;
