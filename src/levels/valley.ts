@@ -1,6 +1,6 @@
 import type { Level } from '../levels';
 import { valleyStory } from '../story';
-import { ball, box, bunting, clutter, cone, facing, farIslands, hamlet, island, lamp, landingPad, launchTower, letters, meadow, model, palette, range, setRoute, smoke, street, streams, trees, updrafts, way, type ModelName, type Vec3 } from '../world';
+import { aqueduct, ball, box, bridges, bunting, clutter, cone, facing, farIslands, giants, hamlet, island, lamp, lowland, landingPad, launchTower, letters, meadow, model, palette, range, setRoute, smoke, street, streams, trees, updrafts, way, type ModelName, type Vec3 } from '../world';
 
 // The first route: floating islands in a green valley, from the post office to the lighthouse.
 
@@ -303,6 +303,18 @@ function build() {
   // --- Far islands: the middle distance between the town and the mountains ------------------------
 
   farIslands(60, -390, 340, 540, 22, 50, 170);
+
+  // --- What fills the gaps: woods below, giant trees, bridges and an aqueduct ---------------------
+
+  // Water from the top of the rock carried over to the hamlet by the gate.
+  aqueduct([rock.x + 6, 118, rock.z + 66], [122, 118, -183]);
+  bridges();
+  // The safe route glides down to a market updraft, climbs it and glides on to the lighthouse.
+  const u = updrafts[1];
+  way([0, 151, -31], [u.x, 100, u.z], [u.x, 185, u.z], [light.x, light.top + 10, light.z]);
+  // The cliff the tests skim along.
+  giants(12, [[cliffFace - 3, 130, -372]]);
+  lowland(60, -390, 760, 1000, 700);
 }
 
 export const valley: Level = {
