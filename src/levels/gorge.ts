@@ -1,6 +1,6 @@
 import type { Level } from '../levels';
 import { gorgeStory } from '../story';
-import { HOMES, SPIRES, ball, box, bunting, clutter, cone, distanceToWorld, facing, fromRoute, lamp, landingPad, launchTower, letters, lowland, meadow, model, pad, palette, pine, range, seeded, setRoute, smoke, street, streams, trees, updrafts, way, type Vec3 } from '../world';
+import { HOMES, SPIRES, ball, box, bridges, bunting, clutter, cone, creepers, distanceToWorld, facing, fromRoute, islands, lamp, landingPad, launchTower, letters, lowland, meadow, model, pad, palette, pine, range, seeded, setRoute, smoke, street, streams, trees, updrafts, way, type Vec3 } from '../world';
 
 // The second route: pillars of sandstone standing out of a sea of cloud at the end of the day.
 // From the post office on the highest crag, through the Needles, down a canyon and out over a
@@ -31,15 +31,45 @@ const hollow = { x: 160, north: -700, south: -860, floor: 136, height: 20, top: 
 // The wind out of its far end, round the outside of the canyon to the aqueduct.
 const gust: [Vec3, Vec3] = [[160, 142, -884], [28, 122, -1262]];
 
-/** A pillar of sandstone with a cap of grass. */
+// The trimmings on the spires draw from their own sequence, so the layout drawn after stays put.
+let dress = seeded(53);
+
+/**
+ * Layers of darker and paler rock from just under `top` down to the cloud. Rock is chipped by
+ * where it is in the world, so a layer a hair bigger than the face it is drawn on sits flush.
+ */
+function strata(top: number, layer: (bottom: number, h: number, color: string) => void) {
+  for (let y = top - 6 - dress() * 8; y > 40; y -= 10 + dress() * 14) {
+    const h = 6 + dress() * 12;
+    layer(y - h, h, dress() < 0.55 ? palette.rust : palette.sand);
+    y -= h;
+  }
+}
+
+/** A pillar of sandstone with a cap of grass, banded, with creepers off the top and pines on a ledge or two. */
 function spire(x: number, top: number, z: number, r: number) {
-  cone(x, FOOT, z, r * 1.3, r, top - 3 - FOOT, palette.sandstone, 9, x);
+  const height = top - 3 - FOOT;
+  cone(x, FOOT, z, r * 1.3, r, height, palette.sandstone, 9, x);
   cone(x, top - 3, z, r, r * 1.04, 3, palette.grass, 12);
+  const across = (y: number) => r + (r * 0.3 * (top - 3 - y)) / height;
+  strata(top, (bottom, h, color) => cone(x, bottom, z, across(bottom) * 1.012, across(bottom + h) * 1.012, h, color, 9, x, false));
+  creepers(x, top, z, r);
+  if (r < 10) return;
+  for (let i = 0; i < 2; i++) {
+    const y = top - 20 - dress() * 70;
+    const angle = dress() * Math.PI * 2;
+    if (y < 70) continue;
+    const lx = x + Math.cos(angle) * across(y) * 0.95;
+    const lz = z + Math.sin(angle) * across(y) * 0.95;
+    cone(lx, y - 4, lz, 5, 9, 4, palette.grass, 8, 0, false);
+    model(dress() < 0.5 ? 'trees_A_small' : 'trees_B_small', lx, y, lz, dress() * 6, 12, false);
+  }
 }
 
 /** A spire with something growing or living on top, as much as there is room for. */
 function crag(x: number, top: number, z: number, r: number, pick: number) {
   spire(x, top, z, r);
+  islands.push({ x, top, z, r });
   const turn = pick * Math.PI * 2;
   const which = Math.floor(pick * 6);
   if (r < 10) return pine(x, top, z, 0.9 + pick * 0.7);
@@ -70,6 +100,7 @@ function canyon(from: [number, number], to: [number, number], floor: number, rim
     const [x, z] = at((length - lap) / 2, (i ? 1 : -1) * (HALF + THICK / 2));
     box(x, FOOT, z, THICK, rim - FOOT, length + lap, palette.sandstone, heading);
     box(x, rim, z, THICK, 2, length + lap, palette.grass, heading);
+    strata(rim, (bottom, h, color) => box(x, bottom, z, THICK + 0.3, h, length + lap + 0.3, color, heading, false));
   });
   const [x, z] = at(length / 2, 0);
   // Wider than the gap, so that chipped walls leave no crack along the floor.
@@ -83,6 +114,7 @@ function build() {
   // The secret way: out of the Needles, through the Hollow and down the wind.
   way([100, 152, -600], [hollow.x, hollow.floor + 10, hollow.north], [hollow.x, hollow.floor + 10, hollow.south], ...gust);
   const random = seeded(23);
+  dress = seeded(53);
 
   // --- The post office crag: the high start ------------------------------------------------------
 
@@ -434,6 +466,7 @@ function build() {
   range(0, -1030, 640, 1700, 26, 300, 1.5);
   range(0, -1030, 1200, 2300, 18, 480, 2.8);
   lowland(0, -1030, 640, 1150, 700);
+  bridges();
 }
 
 export const gorge: Level = {

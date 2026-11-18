@@ -93,7 +93,7 @@ function roughen(geometry: THREE.BufferGeometry, prim: Prim) {
 
 /** The painted surface of a primitive and its ink outline, both already in place in the world. */
 function shape(prim: Prim) {
-  const rocky = [palette.rock, palette.cliff, palette.sandstone, palette.basalt].includes(prim.color);
+  const rocky = [palette.rock, palette.cliff, palette.sandstone, palette.basalt, palette.rust, palette.sand].includes(prim.color);
   const segments = (size: number) => (rocky ? Math.ceil(size / 13) : 1);
   let paint: THREE.BufferGeometry =
     prim.kind === 'box'
