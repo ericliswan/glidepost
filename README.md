@@ -1,6 +1,12 @@
 # Glidepost
 
+[![CI](https://github.com/ericliswan/glidepost/actions/workflows/ci.yml/badge.svg)](https://github.com/ericliswan/glidepost/actions/workflows/ci.yml)
+[![MIT licence](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
+
 A cosy 3D browser game about delivering parcels through a floating town on a glider.
+
+**[Play it in your browser](https://ericliswan.github.io/glidepost/)** — keyboard and mouse, any
+recent desktop browser.
 
 ![The courier diving into Chimney Lane, between two towers and under the bunting](docs/screenshot.png)
 
@@ -20,6 +26,8 @@ timer, a best time, and a few things that are not on the map.
 | 2 | **The Amber Gorge** | Honey cake for Warden Bram at Amberwatch Keep | Down the canyon: about 2 km, under 50 seconds. |
 
 ## Play
+
+Play the [published build](https://ericliswan.github.io/glidepost/), or run it yourself:
 
 ```sh
 npm install
@@ -132,3 +140,8 @@ both by [Kay Lousberg](https://www.kaylousberg.com) and released under
 The typefaces are [Young Serif](https://github.com/noirblancrouge/YoungSerif) and
 [Courier Prime](https://github.com/quoteunquoteapps/CourierPrime), both under the
 [SIL Open Font License 1.1](https://openfontlicense.org). Their licences are in `public/fonts`.
+
+## Licence
+
+The code is under the [MIT licence](LICENSE). The models, portraits and typefaces keep their own
+licences, listed under [Credits](#credits).
