@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "description": "A cosy 3D browser game about delivering parcels between floating islands on a glider.",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",
