@@ -49,6 +49,8 @@ export interface Placement {
   pos: Vec3;
   rotY: number;
   scale: number;
+  /** Far scenery: drawn without outline or shadow, and never hit. */
+  far?: boolean;
 }
 
 export interface Ring {
@@ -86,6 +88,7 @@ export const palette = {
   wood: '#c99862',
   canopy: '#4f9e5a',
   gold: '#cdbd52',
+  basalt: '#8c939a',
 };
 const flowers = ['#ffffff', '#ffd84d', '#ff8fb0', '#f2615a', '#b48cf0'];
 
@@ -306,18 +309,9 @@ export function island(x: number, top: number, z: number, r: number, wreath = tr
   }
 }
 
-export function pine(x: number, ground: number, z: number, s = 1) {
-  cone(x, ground, z, 0.6 * s, 0.45 * s, 3 * s, palette.trunk, 8);
-  cone(x, ground + 2.2 * s, z, 3.2 * s, 1.2 * s, 3.2 * s, palette.pine, 10);
-  cone(x, ground + 4.8 * s, z, 2.5 * s, 0.8 * s, 3 * s, palette.pine, 10);
-  cone(x, ground + 7.2 * s, z, 1.7 * s, 0, 3.4 * s, palette.pine, 10);
-}
-
-export function oak(x: number, ground: number, z: number, s = 1, color = palette.leaf, solid = true) {
-  cone(x, ground, z, 0.7 * s, 0.5 * s, 3.4 * s, palette.trunk, 8, 0, solid);
-  ball(x, ground + 5.6 * s, z, 3.2 * s, color, solid);
-  ball(x + 1.9 * s, ground + 4.6 * s, z + 0.8 * s, 2.2 * s, color, solid);
-  ball(x - 1.7 * s, ground + 4.9 * s, z - 1.0 * s, 2.4 * s, color, solid);
+/** A pine from the model pack, about ten metres tall at `s` = 1. */
+export function pine(x: number, ground: number, z: number, s = 1, slender = false, solid = true) {
+  model(slender ? 'tree_single_A' : 'tree_single_B', x, ground, z, detail() * 6, 9 * s, solid);
 }
 
 export function bush(x: number, ground: number, z: number, s = 1) {
@@ -333,8 +327,7 @@ export function trees(x: number, ground: number, z: number, r: number, count: nu
     if (distanceToWorld(tx, ground + 6, tz) < 5 || underRoute(tx, ground, tz)) continue;
     const kind = random();
     const s = 0.8 + random() * 0.6;
-    if (kind < 0.35) pine(tx, ground, tz, s);
-    else if (kind < 0.85) oak(tx, ground, tz, s, kind < 0.6 ? palette.leaf : kind < 0.75 ? palette.moss : palette.blossom);
+    if (kind < 0.85) pine(tx, ground, tz, s * (kind < 0.35 ? 1.2 : 1), kind < 0.35);
     else bush(tx, ground, tz, s);
     count--;
   }
@@ -476,9 +469,15 @@ export function farIslands(cx: number, cz: number, rx: number, rz: number, count
 /** The roof of the woods far below the islands, under the last of the cloud. */
 export const LOWLAND = -90;
 
-/** Woods with a few big old roofs among them, over the land under an oval. None of it can be hit. */
+const WOODS: ModelName[] = ['trees_A_large', 'trees_B_large', 'hills_A_trees', 'trees_B_medium', 'hills_B_trees', 'trees_A_medium', 'hills_C_trees'];
+
+/** Far scenery: drawn without outline or shadow, and cannot be hit. */
+function scenery(name: ModelName, x: number, ground: number, z: number, rotY: number, scale: number) {
+  placements.push({ name, pos: [x, ground, z], rotY, scale, far: true });
+}
+
+/** Pine woods and wooded hills, with a few big old roofs among them, over the land under an oval. */
 export function lowland(cx: number, cz: number, rx: number, rz: number, count: number) {
-  const greens = [palette.canopy, palette.pine, palette.leaf, palette.grassDark, palette.canopy, palette.gold];
   for (let i = 0; i < count; i++) {
     const angle = detail() * Math.PI * 2;
     const out = Math.sqrt(detail());
@@ -486,60 +485,68 @@ export function lowland(cx: number, cz: number, rx: number, rz: number, count: n
     const z = cz + Math.sin(angle) * rz * out;
     const ground = LOWLAND - 60 - detail() * 30;
     if (i % 14 === 0) model(i % 28 ? HOMES[i % 6] : SPIRES[i % 6], x, ground + 30, z, detail() * 6, 34, false);
-    else oak(x, ground, z, 6 + detail() * 4, greens[i % greens.length], false);
+    else scenery(WOODS[i % WOODS.length], x, ground, z, detail() * 6, 45 + detail() * 25);
   }
 }
 
-/** A tree as tall as a tower: its trunk rises out of the woods and its crown, `r` across, is at `top`. */
-function giant(x: number, top: number, z: number, r: number) {
-  cone(x, LOWLAND - 60, z, r * 0.36, r * 0.2, top - LOWLAND + 60 - r * 0.3, palette.trunk, 10);
-  for (const [dx, dy, dz, s] of crown(r)) ball(x + dx, top + dy, z + dz, s, palette.canopy);
-  // Moss hanging off the crown, too thin to hit.
-  for (let i = 0; i < 8; i++) {
-    const angle = detail() * Math.PI * 2;
-    const length = 6 + detail() * r * 0.8;
-    cone(x + Math.cos(angle) * r * 0.75, top - r * 0.3 - length, z + Math.sin(angle) * r * 0.75, 0.2, 0.5, length, palette.moss, 5, 0, false);
-  }
+const STACKS: ModelName[] = ['mountain_A_grass_trees', 'mountain_B_grass_trees', 'mountain_C_grass_trees'];
+
+/** A column of basalt out of the woods, with pines on its ledges and its top at `top`. `s` is its scale. */
+function stack(x: number, top: number, z: number, s: number, solid = true) {
+  const name = STACKS[Math.floor(detail() * STACKS.length)];
+  const ground = top - models[name].size[1] * s;
+  model(name, x, ground, z, detail() * 6, s, solid);
+  // The model is only the crown of the column; the rest goes down out of sight.
+  cone(x, LOWLAND - 60, z, s * 0.95, s * 0.8, ground - LOWLAND + 61, palette.basalt, 7, detail() * 6, solid);
 }
 
-/** The balls of a giant's crown, as offsets from its middle and radii. */
-const crown = (r: number): [number, number, number, number][] => [
-  [0, 0, 0, r * 0.75],
-  [r * 0.6, -r * 0.2, r * 0.3, r * 0.6],
-  [-r * 0.6, -r * 0.1, -r * 0.3, r * 0.62],
-  [r * 0.1, -r * 0.25, -r * 0.65, r * 0.55],
-  [-r * 0.2, -r * 0.25, r * 0.65, r * 0.55],
-  [0, r * 0.45, 0, r * 0.5],
-  // A lower bough, well down the trunk.
-  [r * 0.55, -r * 1.7, -r * 0.2, r * 0.42],
-  [-r * 0.5, -r * 2.4, r * 0.3, r * 0.38],
-];
+/** How far a stack of scale `s` reaches from its middle. */
+const stackReach = (s: number) => s * 1.05;
+
+/** True if a column `r` across, from `top` down to the woods, keeps clear of the ways and cuts through no island. */
+function columnClear(x: number, top: number, z: number, r: number) {
+  for (let y = top; y > LOWLAND; y -= 15) if (fromWays(x, y, z) < r + 18 || distanceToWorld(x, y, z) < r * 0.6) return false;
+  return true;
+}
 
 /**
- * Giant trees standing beside the ways, their crowns a little above them. Each keeps well clear
+ * Columns of basalt standing beside the ways, their tops a little above them. Each keeps well clear
  * of every way, letter, bell and updraft, and of any `keepClear` point.
  */
-export function giants(count: number, keepClear: Vec3[] = []) {
+export function stacks(count: number, keepClear: Vec3[] = []) {
   const clear = [...letters, ...bells, ...keepClear];
-  for (let tries = 0, placed = 0; placed < count && tries < 600; tries++) {
+  for (let tries = 0, placed = 0; placed < count && tries < 800; tries++) {
     const line = ways[Math.floor(detail() * ways.length)];
     const i = 1 + Math.floor(detail() * (line.length - 1));
     const [ax, ay, az] = line[i - 1];
     const [bx, by, bz] = line[i];
     const t = detail();
     const along = Math.hypot(bx - ax, bz - az) || 1;
-    const side = (45 + detail() * 60) * (detail() < 0.5 ? -1 : 1);
+    const s = 26 + detail() * 22;
+    const r = stackReach(s);
+    const side = (r + 30 + detail() * 70) * (detail() < 0.5 ? -1 : 1);
     const x = ax + (bx - ax) * t - ((bz - az) / along) * side;
     const z = az + (bz - az) * t + ((bx - ax) / along) * side;
-    const top = ay + (by - ay) * t + 35 + detail() * 30;
-    const r = 24 + detail() * 10;
-    const balls = crown(r).map(([dx, dy, dz, s]) => [x + dx, top + dy, z + dz, s]);
-    if (fromRoute(x, z) < r * 0.4 + 25) continue;
-    if (balls.some(([bx, by, bz, s]) => fromWays(bx, by, bz) < s + 18 || distanceToWorld(bx, by, bz) < s * 0.5)) continue;
-    if (clear.some(([px, py, pz]) => Math.hypot(px - x, Math.max(0, py - top - r), pz - z) < r + 20)) continue;
+    const top = ay + (by - ay) * t + 30 + detail() * 70;
+    if (fromRoute(x, z) < r + 25 || !columnClear(x, top, z, r)) continue;
+    if (clear.some(([px, py, pz]) => Math.hypot(px - x, Math.max(0, py - top), pz - z) < r + 20)) continue;
     if (updrafts.some((u) => Math.hypot(u.x - x, u.z - z) < u.radius + r + 15)) continue;
-    giant(x, top, z, r);
+    stack(x, top, z, s);
     placed++;
+  }
+}
+
+/** Taller stacks round an oval out beyond the far islands, so the sky is seen only high up. */
+export function farStacks(cx: number, cz: number, rx: number, rz: number, count: number, low: number, high: number) {
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2 + detail() * 0.3;
+    const out = 0.8 + detail() * 0.4;
+    const x = cx + Math.cos(angle) * rx * out;
+    const z = cz + Math.sin(angle) * rz * out;
+    const s = 40 + detail() * 50;
+    const top = low + detail() * (high - low);
+    if (!columnClear(x, top, z, stackReach(s))) continue;
+    stack(x, top, z, s, false);
   }
 }
 

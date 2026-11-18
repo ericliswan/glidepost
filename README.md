@@ -132,7 +132,7 @@ scope, and what comes later (ghost replays, parcel types, more islands, a daily 
 
 ## Credits
 
-The buildings and props are from the [KayKit Medieval Hexagon Pack](https://kaylousberg.itch.io/kaykit-medieval-hexagon)
+The buildings, props, trees and wooded crags are from the [KayKit Medieval Hexagon Pack](https://kaylousberg.itch.io/kaykit-medieval-hexagon)
 and the courier and the portraits are from the [KayKit Adventurers pack](https://kaylousberg.itch.io/kaykit-adventurers),
 both by [Kay Lousberg](https://www.kaylousberg.com) and released under
 [CC0](https://creativecommons.org/publicdomain/zero/1.0/).

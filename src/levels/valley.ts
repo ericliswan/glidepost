@@ -1,6 +1,6 @@
 import type { Level } from '../levels';
 import { valleyStory } from '../story';
-import { aqueduct, ball, box, bridges, bunting, clutter, cone, facing, farIslands, giants, hamlet, island, lamp, lowland, landingPad, launchTower, letters, meadow, model, palette, range, setRoute, smoke, street, streams, trees, updrafts, way, type ModelName, type Vec3 } from '../world';
+import { aqueduct, ball, box, bridges, bunting, clutter, cone, facing, farIslands, farStacks, hamlet, island, lamp, lowland, landingPad, launchTower, letters, meadow, model, palette, range, setRoute, smoke, stacks, street, streams, trees, updrafts, way, type ModelName, type Vec3 } from '../world';
 
 // The first route: floating islands in a green valley, from the post office to the lighthouse.
 
@@ -298,13 +298,13 @@ function build() {
   // --- The mountains: a wall round the whole valley -----------------------------------------------
 
   range(60, -390, 720, 980, 18, 290, 1.4);
-  range(60, -390, 1300, 1500, 14, 480, 1.9);
+  range(60, -390, 1300, 1500, 14, 480, 2.8);
 
   // --- Far islands: the middle distance between the town and the mountains ------------------------
 
   farIslands(60, -390, 340, 540, 22, 50, 170);
 
-  // --- What fills the gaps: woods below, giant trees, bridges and an aqueduct ---------------------
+  // --- What fills the gaps: woods below, stacks of basalt, bridges and an aqueduct ---------------------
 
   // Water from the top of the rock carried over to the hamlet by the gate.
   aqueduct([rock.x + 6, 118, rock.z + 66], [122, 118, -183]);
@@ -313,7 +313,8 @@ function build() {
   const u = updrafts[1];
   way([0, 151, -31], [u.x, 100, u.z], [u.x, 185, u.z], [light.x, light.top + 10, light.z]);
   // The cliff the tests skim along.
-  giants(12, [[cliffFace - 3, 130, -372]]);
+  stacks(20, [[cliffFace - 3, 130, -372]]);
+  farStacks(60, -390, 560, 780, 30, 180, 380);
   lowland(60, -390, 760, 1000, 700);
 }
 
