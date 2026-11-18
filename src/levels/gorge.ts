@@ -1,6 +1,6 @@
 import type { Level } from '../levels';
 import { gorgeStory } from '../story';
-import { HOMES, SPIRES, ball, box, bunting, clutter, cone, distanceToWorld, facing, fromRoute, lamp, landingPad, launchTower, letters, meadow, model, pad, palette, pine, range, seeded, setRoute, smoke, street, streams, trees, updrafts, way, type Vec3 } from '../world';
+import { HOMES, SPIRES, ball, box, bunting, clutter, cone, distanceToWorld, facing, fromRoute, lamp, landingPad, launchTower, letters, lowland, meadow, model, pad, palette, pine, range, seeded, setRoute, smoke, street, streams, trees, updrafts, way, type Vec3 } from '../world';
 
 // The second route: pillars of sandstone standing out of a sea of cloud at the end of the day.
 // From the post office on the highest crag, through the Needles, down a canyon and out over a
@@ -432,7 +432,8 @@ function build() {
   // --- The mountains: a wall round the whole gorge -------------------------------------------------
 
   range(0, -1030, 640, 1700, 26, 300, 1.5);
-  range(0, -1030, 1200, 2300, 18, 480, 1.9);
+  range(0, -1030, 1200, 2300, 18, 480, 2.8);
+  lowland(0, -1030, 640, 1150, 700);
 }
 
 export const gorge: Level = {
